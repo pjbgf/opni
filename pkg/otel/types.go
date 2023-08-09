@@ -24,6 +24,7 @@ func AgentEndpoint(serviceName string) string {
 type NodeConfig struct {
 	Instance      string
 	Logs          LoggingConfig
+	Traces        TraceConfig
 	Metrics       MetricsConfig
 	Containerized bool
 	LogLevel      string
@@ -32,12 +33,18 @@ type NodeConfig struct {
 type AggregatorConfig struct {
 	AgentEndpoint string
 	LogsEnabled   bool
+	TracesEnabled bool
 	Metrics       MetricsConfig
 	Containerized bool
 	LogLevel      string
 }
 
 type LoggingConfig struct {
+	Enabled   bool
+	Receivers []string
+}
+
+type TraceConfig struct {
 	Enabled   bool
 	Receivers []string
 }

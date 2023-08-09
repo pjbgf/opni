@@ -246,6 +246,15 @@ service:
       processors: ["memory_limiter", "k8sattributes"]
       exporters: ["otlp"]
   {{- end }}
+  {{- if .Traces.Enabled }}
+    traces:
+      receivers:
+      {{- range .Traces.Receivers }}
+      - {{ . }}
+      {{- end }}
+      processors: ["memory_limiter", "k8sattributes"]
+      exporters: ["otlp"]
+  {{- end }}
   {{ template "metrics-node-pipeline" .}}
 `
 
@@ -297,6 +306,12 @@ service:
   {{- if .LogsEnabled }}
     logs:
       receivers: ["otlp", "k8s_events"]
+      processors: ["transform", "memory_limiter", "batch"]
+      exporters: ["otlphttp"]
+  {{- end }}
+  {{- if .TracesEnabled }}
+    logs:
+      receivers: ["otlp"]
       processors: ["transform", "memory_limiter", "batch"]
       exporters: ["otlphttp"]
   {{- end }}
