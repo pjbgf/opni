@@ -55,6 +55,9 @@ func (r *Reconciler) getDaemonConfig(loggingReceivers []string) otel.NodeConfig 
 			Enabled:   r.collector.Spec.LoggingConfig != nil,
 			Receivers: loggingReceivers,
 		},
+		Traces: otel.TraceConfig{
+			Enabled: r.collector.Spec.TracesConfig != nil,
+		},
 		Metrics:       lo.FromPtr(r.getMetricsConfig()),
 		Containerized: true,
 		LogLevel:      r.collector.Spec.LogLevel,
@@ -74,10 +77,10 @@ func (r *Reconciler) getAggregatorConfig(
 	}
 }
 
-func (r *Reconciler) receiverConfig() (retData []byte, retReceivers []string, retErr error) {
+func (r *Reconciler) receiverConfig() (retData []byte, logReceivers []string, retErr error) {
 	if r.collector.Spec.LoggingConfig != nil {
 		retData = append(retData, []byte(templateLogAgentK8sReceiver)...)
-		retReceivers = append(retReceivers, logReceiverK8s)
+		logReceivers = append(logReceivers, logReceiverK8s)
 
 		config, err := r.fetchLoggingCollectorConfig()
 		if err != nil {
@@ -92,7 +95,7 @@ func (r *Reconciler) receiverConfig() (retData []byte, retReceivers []string, re
 		}
 		retData = append(retData, data...)
 		if len(auditLogsReceiver) > 0 {
-			retReceivers = append(retReceivers, auditLogsReceiver)
+			logReceivers = append(logReceivers, auditLogsReceiver)
 		}
 
 		receiver, data, err := r.generateDistributionReceiver(config)
@@ -102,7 +105,7 @@ func (r *Reconciler) receiverConfig() (retData []byte, retReceivers []string, re
 		}
 		retData = append(retData, data...)
 		if len(receiver) > 0 {
-			retReceivers = append(retReceivers, receiver...)
+			logReceivers = append(logReceivers, receiver...)
 		}
 	}
 	if r.collector.Spec.MetricsConfig != nil {
