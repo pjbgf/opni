@@ -45,8 +45,7 @@ type LoggingConfig struct {
 }
 
 type TraceConfig struct {
-	Enabled   bool
-	Receivers []string
+	Enabled bool
 }
 
 type MetricsConfig struct {
