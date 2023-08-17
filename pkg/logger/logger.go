@@ -13,6 +13,7 @@ import (
 	"github.com/kralicky/gpkg/sync"
 	slogmulti "github.com/samber/slog-multi"
 	slogsampling "github.com/samber/slog-sampling"
+	"github.com/spf13/afero"
 )
 
 var (
@@ -24,30 +25,38 @@ var (
     /_/
  Observability + AIOps for Kubernetes
 `
-
-	DefaultLogLevel   = slog.LevelDebug
-	DefaultWriter     io.Writer
-	DefaultAddSource  = true
-	pluginGroupPrefix = "plugin"
-	NoRepeatInterval  = 365 * 24 * time.Hour // arbitrarily long time to denote one-time sampling
-	DefaultTimeFormat = "2006 Jan 02 15:04:05"
-	errKey            = "err"
+	DefaultLogLevel    = slog.LevelDebug
+	DefaultWriter      io.Writer
+	DefaultAddSource   = true
+	DefaultDisableTime = false
+	pluginGroupPrefix  = "plugin"
+	NoRepeatInterval   = 365 * 24 * time.Hour // arbitrarily long time to denote one-time sampling
+	logFs              afero.Fs
+	logFileName        = "opni-logs"
+	DefaultTimeFormat  = "2006 Jan 02 15:04:05"
+	errKey             = "err"
 )
 
 var logSampler = &sampler{}
+
+func init() {
+	//logFs = afero.NewMemMapFs() //fixme err unmarshal: string field contains invalid UTF-8
+	logFs = afero.NewOsFs()
+}
 
 func AsciiLogo() string {
 	return asciiLogo
 }
 
 type LoggerOptions struct {
-	Level        slog.Level
-	AddSource    bool
-	ReplaceAttr  func(groups []string, a slog.Attr) slog.Attr
-	Writer       io.Writer
-	ColorEnabled bool
-	Sampling     *slogsampling.ThresholdSamplingOption
-	TimeFormat   string
+	Level         slog.Level
+	AddSource     bool
+	ReplaceAttr   func(groups []string, a slog.Attr) slog.Attr
+	Writer        io.Writer
+	ColorEnabled  bool
+	TimeFormat    string
+	Sampling      *slogsampling.ThresholdSamplingOption
+	LogFileWriter bool
 }
 
 func ParseLevel(lvl string) slog.Level {
@@ -80,6 +89,12 @@ func WithLogLevel(l slog.Level) LoggerOption {
 func WithWriter(w io.Writer) LoggerOption {
 	return func(o *LoggerOptions) {
 		o.Writer = w
+	}
+}
+
+func WithLogFileWriter() LoggerOption {
+	return func(o *LoggerOptions) {
+		o.LogFileWriter = true
 	}
 }
 
@@ -123,6 +138,13 @@ func WithSampling(cfg *slogsampling.ThresholdSamplingOption) LoggerOption {
 	}
 }
 
+func ConfigureProtoOptions(opts *LoggerOptions) *slog.HandlerOptions {
+	return &slog.HandlerOptions{
+		Level:     opts.Level,
+		AddSource: opts.AddSource,
+	}
+}
+
 func New(opts ...LoggerOption) *slog.Logger {
 	options := &LoggerOptions{
 		Writer:       DefaultWriter,
@@ -140,10 +162,25 @@ func New(opts ...LoggerOption) *slog.Logger {
 
 	handler := newColorHandler(options.Writer, options)
 
+	// apply sampling options
 	if options.Sampling != nil {
-		return slog.New(slogmulti.
+		handler = slogmulti.
 			Pipe(options.Sampling.NewMiddleware()).
-			Handler(handler))
+			Handler(handler)
+	}
+
+	// write logs to a file
+	if options.LogFileWriter {
+		f, err := logFs.OpenFile(logFileName, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			panic(err)
+		}
+		// FIXME where to close this file?
+
+		logFileHandler := NewProtoHandler(f, ConfigureProtoOptions(options))
+
+		// distribute logs to handlers in parallel
+		return slog.New(slogmulti.Fanout(handler, logFileHandler))
 	}
 
 	return slog.New(handler)

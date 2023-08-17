@@ -1715,7 +1715,7 @@ func (e *Environment) startGateway() {
 
 	m := management.NewServer(e.ctx, &e.gatewayConfig.Spec.Management, g, pluginLoader,
 		management.WithCapabilitiesDataSource(g),
-		management.WithHealthStatusDataSource(g),
+		management.WithAgentControlDataSource(g),
 		management.WithLifecycler(lifecycler),
 	)
 	g.MustRegisterCollector(m)
