@@ -70,7 +70,7 @@ processors:
     log_statements:
     - context: log
       statements:
-      - merge_maps(attributes, body, "upsert") where attributes["filename"] == nil
+      - merge_maps(attributes, ParseJSON(body), "upsert") where attributes["filename"] == nil and IsMatch(body, "^\\{")
       - set(attributes["COMM"], attributes["_COMM"])
       - delete_matching_keys(attributes, "^_.*")
     - context: resource
