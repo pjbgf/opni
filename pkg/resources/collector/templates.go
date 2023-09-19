@@ -109,6 +109,7 @@ filelog/kubeauditlogs:
   start_at: beginning
   include_file_path: false
   include_file_name: false
+  storage: file_storage
   operators:
   - type: json_parser
     id: parse-body
@@ -230,7 +231,16 @@ processors:
       - key: tier
       - key: component
     {{ template "metrics-system-processor" . }}
+extensions:
+  file_storage:
+    directory: /var/lib/otelcol/mydir
+    timeout: 1s
+    compaction:
+      on_start: true
+      directory: /tmp/
+      max_transaction_size: 65_536
 service:
+  extensions: [file_storage]
   telemetry:
     logs:
       level: {{ .LogLevel }}
