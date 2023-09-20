@@ -22,16 +22,20 @@ import (
 )
 
 const (
-	receiversKey       = "receivers.yaml"
-	mainKey            = "config.yaml"
-	aggregatorKey      = "aggregator.yaml"
-	collectorImageRepo = "ghcr.io"
-	collectorImage     = "rancher-sandbox/opni-otel-collector"
-	collectorVersion   = "v0.1.2-0.74.0"
+	receiversKey  = "receivers.yaml"
+	mainKey       = "config.yaml"
+	aggregatorKey = "aggregator.yaml"
+
+	// TODO(jaehnri): change as soon as https://github.com/rancher-sandbox/opni-otel-collector/pull/13 is merged
+	collectorImageRepo = "docker.io"
+	collectorImage     = "jaehnri/otel-collector"
+	collectorVersion   = "latest"
+	reloaderImageRepo  = "ghcr.io"
 	reloaderImage      = "rancher-sandbox/config-reloader"
 	reloaderVersion    = "v0.1.2"
-	otelColBinaryName  = "otelcol-custom"
-	otelConfigDir      = "/etc/otel"
+
+	otelColBinaryName = "otelcol-custom"
+	otelConfigDir     = "/etc/otel"
 
 	otlpGRPCPort    = int32(4317)
 	rke2AgentLogDir = "/var/lib/rancher/rke2/agent/logs/"
@@ -567,7 +571,7 @@ func (r *Reconciler) configReloaderImageSpec() opnimeta.ImageSpec {
 	return opnimeta.ImageResolver{
 		Version:     reloaderVersion,
 		ImageName:   reloaderImage,
-		DefaultRepo: collectorImageRepo,
+		DefaultRepo: reloaderImageRepo,
 		ImageOverride: func() *opnimeta.ImageSpec {
 			if r.collector.Spec.ConfigReloader != nil {
 				return &r.collector.Spec.ConfigReloader.ImageSpec
