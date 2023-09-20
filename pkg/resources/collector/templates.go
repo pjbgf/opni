@@ -235,10 +235,6 @@ extensions:
   file_storage:
     directory: /etc/otel
     timeout: 1s
-    compaction:
-      on_start: true
-      directory: /tmp/
-      max_transaction_size: 65_536
 service:
   extensions: [file_storage]
   telemetry:
