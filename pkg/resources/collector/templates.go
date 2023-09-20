@@ -87,7 +87,7 @@ filelog/k8s:
 	templateLogAgentRKE = `
 filelog/rke:
   include: [ /var/lib/rancher/rke/log/*.log ]
-  start_at: beginning
+  storage: file_storage
   include_file_path: true
   include_file_name: false
   operators:
@@ -106,7 +106,6 @@ journald/k3s:
 	templateKubeAuditLogs = template.Must(template.New("kubeauditlogsreceiver").Parse(`
 filelog/kubeauditlogs:
   include: [ {{ . }} ]
-  start_at: beginning
   include_file_path: false
   include_file_name: false
   storage: file_storage
@@ -158,7 +157,7 @@ journald/rke2:
   directory: {{ . }}
 filelog/rke2:
   include: [ /var/lib/rancher/rke2/agent/logs/kubelet.log ]
-  start_at: beginning
+  storage: file_storage
   include_file_path: true
   include_file_name: false
   operators:
