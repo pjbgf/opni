@@ -19,7 +19,7 @@ var (
 filelog/k8s:
   include: [ /var/log/pods/*/*/*.log ]
   exclude: []
-  start_at: beginning
+  storage: file_storage
   include_file_path: true
   include_file_name: false
   operators:
