@@ -233,7 +233,7 @@ processors:
     {{ template "metrics-system-processor" . }}
 extensions:
   file_storage:
-    directory: /tmp/otel
+    directory: /etc/otel/filestorage
     timeout: 1s
 service:
   extensions: [file_storage]

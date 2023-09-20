@@ -36,7 +36,7 @@ const (
 
 	otelColBinaryName = "otelcol-custom"
 	otelConfigDir     = "/etc/otel"
-	fileStorageDir    = "/tmp/otel"
+	fileStorageDir    = "/etc/otel/filestorage"
 
 	otlpGRPCPort    = int32(4317)
 	rke2AgentLogDir = "/var/lib/rancher/rke2/agent/logs/"
@@ -219,10 +219,11 @@ func (r *Reconciler) daemonSet() resources.Resource {
 			MountPath: otelConfigDir,
 		},
 		{
-			Name:      "collector-config",
+			Name:      "filestorage-extension",
 			MountPath: fileStorageDir,
 		},
 	}
+
 	volumes := []corev1.Volume{
 		{
 			Name: "collector-config",
@@ -231,6 +232,15 @@ func (r *Reconciler) daemonSet() resources.Resource {
 					LocalObjectReference: corev1.LocalObjectReference{
 						Name: r.agentConfigMapName(),
 					},
+				},
+			},
+		},
+		{
+			Name: "filestorage-extension",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: fileStorageDir,
+					Type: &directoryOrCreate,
 				},
 			},
 		},
