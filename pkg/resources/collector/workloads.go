@@ -36,6 +36,7 @@ const (
 
 	otelColBinaryName = "otelcol-custom"
 	otelConfigDir     = "/etc/otel"
+	fileStorageDir    = "/tmp/otel"
 
 	otlpGRPCPort    = int32(4317)
 	rke2AgentLogDir = "/var/lib/rancher/rke2/agent/logs/"
@@ -216,6 +217,10 @@ func (r *Reconciler) daemonSet() resources.Resource {
 		{
 			Name:      "collector-config",
 			MountPath: otelConfigDir,
+		},
+		{
+			Name:      "collector-config",
+			MountPath: fileStorageDir,
 		},
 	}
 	volumes := []corev1.Volume{
