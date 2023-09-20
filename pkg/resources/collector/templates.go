@@ -233,7 +233,7 @@ processors:
     {{ template "metrics-system-processor" . }}
 extensions:
   file_storage:
-    directory: /var/lib/otelcol/mydir
+    directory: /etc/otel
     timeout: 1s
     compaction:
       on_start: true
