@@ -6,17 +6,19 @@ import (
 	"os"
 	"sync"
 
+	"log/slog"
+
 	"github.com/lestrrat-go/backoff/v2"
 	"github.com/rancher/opni/apis"
+	"github.com/rancher/opni/pkg/logger"
 	"github.com/rancher/opni/pkg/util/k8sutil"
 	"github.com/rancher/opni/plugins/topology/apis/node"
-	"go.uber.org/zap"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type ExternalTopologyOperatorDriver struct {
 	ExternalTopologyOperatorDriverOptions
-	logger    *zap.SugaredLogger
+	logger    *slog.Logger
 	namespace string
 
 	state reconcilerState
@@ -48,7 +50,7 @@ func WithK8sClient(k8sClient client.Client) ExternalTopologyOperatorDriverOption
 }
 
 func NewExternalTopologyOperatorDriver(
-	logger *zap.SugaredLogger,
+	lg *slog.Logger,
 	opts ...ExternalTopologyOperatorDriverOption,
 ) (*ExternalTopologyOperatorDriver, error) {
 	options := ExternalTopologyOperatorDriverOptions{}
@@ -71,7 +73,7 @@ func NewExternalTopologyOperatorDriver(
 
 	return &ExternalTopologyOperatorDriver{
 		ExternalTopologyOperatorDriverOptions: options,
-		logger:                                zap.S().Named("external-topology-operator-driver"),
+		logger:                                logger.New().WithGroup("external-topology-operator-driver"),
 		namespace:                             namespace,
 	}, nil
 }
@@ -105,10 +107,9 @@ BACKOFF:
 		// for _ obj := range X {}
 		for _, obj := range []client.Object{} {
 			if err := t.reconcileObject(obj, shouldExist); err != nil {
-				t.logger.With(
-					"object", client.ObjectKeyFromObject(obj).String(),
-					zap.Error(err),
-				).Error("error reconciling object")
+				t.logger.Error("error reconciling object", "object", client.ObjectKeyFromObject(obj).String(),
+					logger.Err(err))
+
 				continue BACKOFF
 			}
 		}

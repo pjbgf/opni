@@ -122,7 +122,7 @@ func New(ctx context.Context, conf *v1beta1.AgentConfig, opts ...AgentOption) (*
 	if conf.Spec.LogLevel != "" {
 		level = logger.ParseLevel(conf.Spec.LogLevel)
 	}
-	lg := logger.New(logger.WithLogLevel(level)).Named("agent")
+	lg := logger.New(logger.WithLogLevel(level)).WithGroup("agent")
 	lg.Debug("using log level:", "level", level.String())
 
 	var pl *plugins.PluginLoader
@@ -456,6 +456,7 @@ func setupPluginRoutes(
 	sampledLogger := logger.New(
 		logger.WithSampling(&slogsampling.ThresholdSamplingOption{
 			Threshold: 1,
+			Tick:      logger.NoRepeatInterval,
 			Rate:      0,
 		}),
 	).WithGroup("api")

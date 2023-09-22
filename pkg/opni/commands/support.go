@@ -28,12 +28,10 @@ import (
 	"github.com/rancher/opni/pkg/update"
 	"github.com/rancher/opni/pkg/update/noop"
 	"github.com/rancher/opni/pkg/urn"
-	"github.com/rancher/opni/pkg/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/ttacon/chalk"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -62,7 +60,7 @@ func BuildSupportBootstrapCmd() *cobra.Command {
 			ctx, ca := context.WithCancel(cmd.Context())
 			defer ca()
 
-			agentlg := logger.New(logger.WithLogLevel(util.Must(zapcore.ParseLevel(logLevel))))
+			agentlg := logger.NewZap(logger.WithLogLevel(logger.ParseLevel(logLevel)))
 
 			if configFile == "" {
 				// find config file
@@ -75,7 +73,7 @@ func BuildSupportBootstrapCmd() *cobra.Command {
 					configFile = path
 				case errors.Is(err, config.ErrConfigNotFound):
 					wd, _ := os.Getwd()
-					agentlg.Infof(`could not find a config file in ["%s", "$home/.opni], and --config was not given`, wd)
+					agentlg.Info(fmt.Sprintf(`could not find a config file in ["%s", "$home/.opni], and --config was not given`, wd))
 				default:
 					agentlg.With(
 						zap.Error(err),
@@ -193,7 +191,7 @@ func BuildSupportPingCmd() *cobra.Command {
 			ctx, ca := context.WithCancel(cmd.Context())
 			defer ca()
 
-			agentlg := logger.New(logger.WithLogLevel(util.Must(zapcore.ParseLevel(logLevel))))
+			agentlg := logger.NewZap(logger.WithLogLevel(logger.ParseLevel(logLevel)))
 
 			config := supportagentconfig.MustLoadConfig(configFile, agentlg)
 
@@ -204,7 +202,7 @@ func BuildSupportPingCmd() *cobra.Command {
 				).Fatal("failed to get gateway client")
 			}
 
-			ctx = handleUpdates(ctx, agentlg.Zap(), gatewayClient)
+			ctx = handleUpdates(ctx, agentlg, gatewayClient)
 
 			cc, futureErr := gatewayClient.Connect(ctx)
 			if futureErr.IsSet() {
@@ -249,7 +247,7 @@ func BuildSupportShipCmd() *cobra.Command {
 			ctx, ca := context.WithCancel(cmd.Context())
 			defer ca()
 
-			agentlg := logger.New(logger.WithLogLevel(util.Must(zapcore.ParseLevel(logLevel))))
+			agentlg := logger.NewZap(logger.WithLogLevel(logger.ParseLevel(logLevel)))
 
 			config := supportagentconfig.MustLoadConfig(configFile, agentlg)
 
@@ -260,7 +258,7 @@ func BuildSupportShipCmd() *cobra.Command {
 				).Fatal("failed to get gateway client")
 			}
 
-			ctx = handleUpdates(ctx, agentlg.Zap(), gatewayClient)
+			ctx = handleUpdates(ctx, agentlg, gatewayClient)
 
 			cc, futureErr := gatewayClient.Connect(ctx)
 			if futureErr.IsSet() {
@@ -287,11 +285,11 @@ func BuildSupportShipCmd() *cobra.Command {
 
 			switch Distribution(args[0]) {
 			case RKE:
-				shipRKELogs(ctx, cc, agentlg.Zap())
+				shipRKELogs(ctx, cc, agentlg)
 			case K3S:
-				shipK3sLogs(ctx, cc, agentlg.Zap())
+				shipK3sLogs(ctx, cc, agentlg)
 			case RKE2:
-				shipRKE2Logs(ctx, cc, agentlg.Zap())
+				shipRKE2Logs(ctx, cc, agentlg)
 			default:
 				agentlg.Error("invalid cluster type, must be one of rke, k3s, or rke2")
 			}
@@ -312,7 +310,7 @@ func BuildSupportPasswordCmd() *cobra.Command {
 		Use:   "password",
 		Short: "Shows the initial password for Opensearch Dashboards",
 		Run: func(cmd *cobra.Command, args []string) {
-			agentlg := logger.New(logger.WithLogLevel(util.Must(zapcore.ParseLevel(logLevel))))
+			agentlg := logger.NewZap(logger.WithLogLevel(logger.ParseLevel(logLevel)))
 
 			kr, err := supportagentconfig.LoadKeyring(getRetrievePassword)
 			if err != nil {
@@ -358,7 +356,7 @@ func configureSupportAgentBootstrap(
 	flags *pflag.FlagSet,
 	tokenData string,
 	endpoint string,
-	agentlg logger.ExtendedSugaredLogger,
+	agentlg *zap.SugaredLogger,
 ) (bootstrap.Bootstrapper, error) {
 	strategyConfig, err := trust.BuildConfigFromFlags(flags)
 	if err != nil {
@@ -425,12 +423,12 @@ func handleUpdates(ctx context.Context, lg *zap.SugaredLogger, client clients.Ga
 	agentSyncConf := update.SyncConfig{
 		Client: syncClient,
 		Syncer: agentHandler,
-		Logger: lg.Named("agent-updater"),
+		Logger: logger.New(logger.WithLogLevel(logger.ParseLevel(lg.Level().String()))).WithGroup("agent-updater"),
 	}
 	pluginSyncConf := update.SyncConfig{
 		Client: syncClient,
 		Syncer: pluginHandler,
-		Logger: lg.Named("plugin-updater"),
+		Logger: logger.New(logger.WithLogLevel(logger.ParseLevel(lg.Level().String()))).WithGroup("plugin-updater"),
 	}
 
 	for _, conf := range []update.SyncConfig{agentSyncConf, pluginSyncConf} {

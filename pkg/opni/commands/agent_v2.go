@@ -15,7 +15,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/ttacon/chalk"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc/codes"
 
 	agentv2 "github.com/rancher/opni/pkg/agent/v2"
@@ -48,7 +47,7 @@ func BuildAgentV2Cmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 
 			tracing.Configure("agentv2")
-			agentlg := logger.New(logger.WithLogLevel(util.Must(zapcore.ParseLevel(logLevel))))
+			agentlg := logger.NewZap(logger.WithLogLevel(logger.ParseLevel(logLevel)))
 
 			if configFile == "" {
 				// find config file

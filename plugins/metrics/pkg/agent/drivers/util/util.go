@@ -8,6 +8,7 @@ import (
 	"log/slog"
 
 	"github.com/cisco-open/k8s-objectmatcher/patch"
+	opnilogger "github.com/rancher/opni/pkg/logger"
 	"github.com/samber/lo"
 	appsv1 "k8s.io/api/apps/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -102,7 +103,7 @@ func ReconcileObject(logger *slog.Logger, k8sClient client.Client, namespace str
 	// update the object
 	patchResult, err := patch.DefaultPatchMaker.Calculate(current, desired, patch.IgnoreStatusFields())
 	if err != nil {
-		logger.Warn("could not match objects", logger.Err(err))
+		logger.Warn("could not match objects", opnilogger.Err(err))
 
 		return err
 	}
@@ -113,8 +114,7 @@ func ReconcileObject(logger *slog.Logger, k8sClient client.Client, namespace str
 	logger.Info("resource diff")
 
 	if err := patch.DefaultAnnotator.SetLastAppliedAnnotation(desired); err != nil {
-		logger.Error("failed to set last applied annotation", logger.Err(err))
-
+		logger.Error("failed to set last applied annotation", opnilogger.Err(err))
 	}
 
 	metaAccessor := meta.NewAccessor()
