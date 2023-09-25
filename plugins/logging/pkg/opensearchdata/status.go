@@ -2,6 +2,7 @@ package opensearchdata
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/rancher/opni/pkg/util"
 	"github.com/tidwall/gjson"
@@ -17,13 +18,13 @@ func (m *Manager) GetClusterStatus() ClusterStatus {
 
 	resp, err := m.Client.Cluster.GetClusterHealth(context.TODO())
 	if err != nil {
-		m.logger.With("err", err).Error("failed to fetch opensearch cluster status")
+		m.logger.Error("failed to fetch opensearch cluster status", "err", err)
 		return ClusterStatusError
 	}
 	defer resp.Body.Close()
 
 	if resp.IsError() {
-		m.logger.With("resp", resp.String).Error("failure response from cluster status")
+		m.logger.Error("failure response from cluster status", "resp", resp.String)
 		return ClusterStatusError
 	}
 
@@ -37,7 +38,7 @@ func (m *Manager) GetClusterStatus() ClusterStatus {
 	case "red":
 		return ClusterStatusRed
 	default:
-		m.logger.Errorf("unknown status: %s", status)
+		m.logger.Error(fmt.Sprintf("unknown status: %s", status))
 		return ClusterStatusError
 	}
 }

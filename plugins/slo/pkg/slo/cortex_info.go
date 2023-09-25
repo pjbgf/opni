@@ -11,18 +11,18 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/rancher/opni/pkg/metrics/compat"
-	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/yaml.v3"
+	"log/slog"
 )
 
 var instantMaskDisabled = true
 
 func createGrafanaSLOMask(ctx context.Context, p *Plugin, clusterId string, ruleId string) error {
-	p.logger.With("sloId", ruleId, "clusterId", clusterId).Debugf("creating grafana mask")
+	p.logger.Debug("creating grafana mask", "sloId", ruleId, "clusterId", clusterId)
 	if !instantMaskDisabled {
 		_, err := p.adminClient.Get().WriteMetrics(ctx, &cortexadmin.WriteRequest{
 			ClusterID: clusterId,
@@ -49,7 +49,7 @@ func createGrafanaSLOMask(ctx context.Context, p *Plugin, clusterId string, rule
 func tryApplyThenDeleteCortexRules(
 	ctx context.Context,
 	p *Plugin,
-	lg *zap.SugaredLogger,
+	lg *slog.Logger,
 	clusterId string,
 	ruleId *string,
 	toApply []rulefmt.RuleGroup,
@@ -84,7 +84,7 @@ func tryApplyThenDeleteCortexRules(
 	if ruleId != nil {
 		err := createGrafanaSLOMask(ctx, p, clusterId, *ruleId)
 		if err != nil {
-			lg.Errorf("creating grafana mask failed %s", err)
+			lg.Error(fmt.Sprintf("creating grafana mask failed %s", err))
 			errArr = append(errArr, err)
 		}
 	}
@@ -99,7 +99,7 @@ func tryApplyThenDeleteCortexRules(
 func applyCortexSLORules(
 	ctx context.Context,
 	p *Plugin,
-	lg *zap.SugaredLogger,
+	lg *slog.Logger,
 	clusterId string,
 	ruleSpec rulefmt.RuleGroup,
 ) error {
@@ -125,7 +125,7 @@ func applyCortexSLORules(
 func deleteCortexSLORules(
 	ctx context.Context,
 	p *Plugin,
-	_ *zap.SugaredLogger,
+	_ *slog.Logger,
 	clusterId string,
 	groupName string,
 ) error {

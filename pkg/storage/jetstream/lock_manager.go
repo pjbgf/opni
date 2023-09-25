@@ -10,7 +10,6 @@ import (
 	"github.com/rancher/opni/pkg/logger"
 	"github.com/rancher/opni/pkg/storage"
 	"github.com/rancher/opni/pkg/storage/lock"
-	"go.uber.org/zap"
 )
 
 // Requires jetstream 2.9+
@@ -37,9 +36,7 @@ func NewJetstreamLockManager(ctx context.Context, conf *v1beta1.JetStreamStorage
 		nats.MaxReconnects(-1),
 		nats.RetryOnFailedConnect(true),
 		nats.DisconnectErrHandler(func(c *nats.Conn, err error) {
-			lg.With(
-				zap.Error(err),
-			).Warn("disconnected from jetstream")
+			lg.Warn("disconnected from jetstream", logger.Err(err))
 		}),
 		nats.ReconnectHandler(func(c *nats.Conn) {
 			lg.With(

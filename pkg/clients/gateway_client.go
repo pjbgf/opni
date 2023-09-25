@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 
+	"log/slog"
+
 	"github.com/rancher/opni/pkg/auth/challenges"
 	"github.com/rancher/opni/pkg/auth/cluster"
 	authv2 "github.com/rancher/opni/pkg/auth/cluster/v2"
@@ -17,7 +19,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
@@ -62,7 +63,7 @@ func NewGatewayClient(
 		return nil, fmt.Errorf("failed to create TLS config: %w", err)
 	}
 
-	lg := logger.New().Named("gateway-client")
+	lg := logger.New().WithGroup("gateway-client")
 	ncc, cc, err := dial(ctx, address, id, kr, tlsConfig, lg)
 	if err != nil {
 		return nil, err
@@ -98,7 +99,7 @@ type gatewayClient struct {
 	ncMu   sync.Mutex
 	nc     net.Conn
 	id     string
-	logger *zap.SugaredLogger
+	logger *slog.Logger
 
 	mu       sync.RWMutex
 	services []util.ServicePack[any]
@@ -125,7 +126,7 @@ func (gc *gatewayClient) RegisterSplicedStream(cc grpc.ClientConnInterface, name
 	})
 }
 
-func dial(ctx context.Context, address, id string, kr keyring.Keyring, tlsConfig *tls.Config, lg *zap.SugaredLogger) (<-chan net.Conn, *grpc.ClientConn, error) {
+func dial(ctx context.Context, address, id string, kr keyring.Keyring, tlsConfig *tls.Config, lg *slog.Logger) (<-chan net.Conn, *grpc.ClientConn, error) {
 	authChallenge, err := authv2.NewClientChallenge(kr, id, lg)
 	if err != nil {
 		return nil, nil, err
@@ -229,10 +230,9 @@ func (gc *gatewayClient) Connect(ctx context.Context) (_ grpc.ClientConnInterfac
 		var headerMd metadata.MD
 		splicedStream, err := streamClient.Connect(ctx, grpc.Header(&headerMd))
 		if err != nil {
-			gc.logger.With(
-				zap.String("name", name),
-				zap.Error(err),
-			).Warn("failed to connect to spliced stream, skipping")
+			gc.logger.Warn("failed to connect to spliced stream, skipping", "name", name,
+				logger.Err(err))
+
 			continue
 		}
 		var correlationId string
@@ -246,10 +246,9 @@ func (gc *gatewayClient) Connect(ctx context.Context) (_ grpc.ClientConnInterfac
 				attribute.String("agent", authorizedId),
 			)),
 		); err != nil {
-			gc.logger.With(
-				zap.String("name", name),
-				zap.Error(err),
-			).Warn("failed to splice remote stream, skipping")
+			gc.logger.Warn("failed to splice remote stream, skipping", "name", name,
+				logger.Err(err))
+
 			continue
 		}
 
@@ -261,10 +260,9 @@ func (gc *gatewayClient) Connect(ctx context.Context) (_ grpc.ClientConnInterfac
 				Type:          streamv1.EventType_DiscoveryComplete,
 				CorrelationId: correlationId,
 			}); err != nil {
-				gc.logger.With(
-					zap.String("name", name),
-					zap.Error(err),
-				).Error("failed to notify remote stream")
+				gc.logger.Error("failed to notify remote stream", "name", name,
+					logger.Err(err))
+
 			}
 		}()
 	}
@@ -272,9 +270,8 @@ func (gc *gatewayClient) Connect(ctx context.Context) (_ grpc.ClientConnInterfac
 	cc, errC := ts.Serve()
 	f := future.NewFromChannel(errC)
 	if f.IsSet() {
-		gc.logger.With(
-			zap.Error(f.Get()),
-		).Error("failed to connect to gateway")
+		gc.logger.Error("failed to connect to gateway", logger.Err(f.Get()))
+
 		// fallthrough
 	}
 	return cc, f

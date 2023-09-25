@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log/slog"
 	"math"
 	"math/rand"
 	"net/http"
@@ -27,6 +26,8 @@ import (
 	"syscall"
 	"text/template"
 	"time"
+
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/kralicky/totem"
@@ -76,7 +77,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.uber.org/mock/gomock"
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -468,9 +468,8 @@ func (e *Environment) Stop(cause ...string) error {
 		lg = testlog.Log
 	}
 	if len(cause) > 0 {
-		lg.With(
-			"cause", cause[0],
-		).Info("Stopping test environment")
+		lg.Info("Stopping test environment", "cause", cause[0])
+
 	} else {
 		lg.Info("Stopping test environment")
 	}
@@ -837,19 +836,17 @@ READY:
 			}
 			if resp != nil {
 				if retryCount%100 == 0 {
-					lg.With(
-						zap.Error(err),
-						"status", resp.Status,
-					).Info("Waiting for cortex to start...")
+					lg.Info("Waiting for cortex to start...", logger.Err(err),
+						"status", resp.Status)
+
 				}
 				retryCount++
 			}
 		}
 	}
-	lg.With(
-		"httpAddress", fmt.Sprintf("https://localhost:%d", e.ports.CortexHTTP),
-		"grpcAddress", fmt.Sprintf("localhost:%d", e.ports.CortexGRPC),
-	).Info("Cortex started")
+	lg.Info("Cortex started", "httpAddress", fmt.Sprintf("https://localhost:%d", e.ports.CortexHTTP),
+		"grpcAddress", fmt.Sprintf("localhost:%d", e.ports.CortexGRPC))
+
 	retCtx, retCa := context.WithCancel(ctx)
 	go func() {
 		select {
@@ -978,11 +975,9 @@ func (e *Environment) UnsafeStartPrometheus(ctx context.Context, opniAgentId str
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	lg.With(
-		"address", fmt.Sprintf("http://localhost:%d", port),
+	lg.Info("Prometheus started", "address", fmt.Sprintf("http://localhost:%d", port),
 		"dir", promDir,
-		"agentId", opniAgentId,
-	).Info("Prometheus started")
+		"agentId", opniAgentId)
 
 	retCtx, retCa := context.WithCancel(ctx)
 	go func() {

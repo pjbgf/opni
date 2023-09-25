@@ -91,9 +91,7 @@ func NewEtcdStore(ctx context.Context, conf *v1beta1.EtcdStorageSpec, opts ...Et
 	if err != nil {
 		return nil, fmt.Errorf("failed to create etcd client: %w", err)
 	}
-	lg.With(
-		"endpoints", clientConfig.Endpoints,
-	).Info("connecting to etcd")
+	lg.Info("connecting to etcd", "endpoints", clientConfig.Endpoints)
 	return &EtcdStore{
 		EtcdStoreOptions: options,
 		Logger:           lg,

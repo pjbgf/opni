@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"time"
 
+	"log/slog"
+
 	"github.com/gin-gonic/gin"
 	"github.com/rancher/opni/pkg/config/v1beta1"
 	"github.com/rancher/opni/pkg/logger"
@@ -18,13 +20,12 @@ import (
 	"github.com/rancher/opni/web"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel"
-	"go.uber.org/zap"
 )
 
 type Server struct {
 	ServerOptions
 	config *v1beta1.ManagementSpec
-	logger *zap.SugaredLogger
+	logger *slog.Logger
 }
 
 type extraHandler struct {
@@ -78,7 +79,7 @@ func NewServer(config *v1beta1.ManagementSpec, opts ...ServerOption) (*Server, e
 	return &Server{
 		ServerOptions: options,
 		config:        config,
-		logger:        logger.New().Named("dashboard"),
+		logger:        logger.New().WithGroup("dashboard"),
 	}, nil
 }
 
@@ -104,9 +105,8 @@ func (ws *Server) ListenAndServe(ctx context.Context) error {
 			return err
 		}
 	}
-	lg.With(
-		"address", listener.Addr(),
-	).Info("ui server starting")
+	lg.Info("ui server starting", "address", listener.Addr())
+
 	webFsTracer := otel.Tracer("webfs")
 	router := gin.New()
 	router.Use(
@@ -143,10 +143,12 @@ func (ws *Server) ListenAndServe(ctx context.Context) error {
 	opniApiAddr := ws.config.HTTPListenAddress
 	mgmtUrl, err := url.Parse("http://" + opniApiAddr)
 	if err != nil {
-		lg.With(
-			"url", opniApiAddr,
-			"error", err,
-		).Panic("failed to parse management API URL")
+		lg.Error(
+
+			"failed to parse management API URL", "url", opniApiAddr,
+			"error", err)
+		panic(err)
+
 		return err
 	}
 	router.Any("/opni-api/*any", gin.WrapH(http.StripPrefix("/opni-api", httputil.NewSingleHostReverseProxy(mgmtUrl))))

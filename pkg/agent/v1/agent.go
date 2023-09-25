@@ -101,7 +101,7 @@ func New(ctx context.Context, conf *v1beta1.AgentConfig, opts ...AgentOption) (*
 	if conf.Spec.LogLevel != "" {
 		level = logger.ParseLevel(conf.Spec.LogLevel)
 	}
-	lg := logger.New(logger.WithLogLevel(level)).Named("agent")
+	lg := logger.New(logger.WithLogLevel(level)).WithGroup("agent")
 	lg.Debug("using log level:", "level", level.String())
 
 	router := gin.New()
@@ -201,9 +201,8 @@ func New(ctx context.Context, conf *v1beta1.AgentConfig, opts ...AgentOption) (*
 					lg.Debug("starting rule stream")
 					go func() {
 						if err := agent.streamRulesToGateway(ctx); err != nil {
-							lg.With(
-								zap.Error(err),
-							).Error("error streaming rules to gateway")
+							lg.Error("error streaming rules to gateway", logger.Err(err))
+
 						}
 					}()
 				})
@@ -213,14 +212,12 @@ func New(ctx context.Context, conf *v1beta1.AgentConfig, opts ...AgentOption) (*
 				// 	go agent.streamServiceDiscoveryToGateway(ctx)
 				// })
 
-				lg.With(
-					zap.Error(errF.Get()), // this will block until an error is received
-				).Warn("disconnected from gateway")
+				lg.Warn("disconnected from gateway", logger.Err(errF.Get()))
+
 				agent.remoteWriteClient.Close()
 			} else {
-				lg.With(
-					zap.Error(errF.Get()),
-				).Warn("error connecting to gateway")
+				lg.Warn("error connecting to gateway", logger.Err(errF.Get()))
+
 			}
 			if util.StatusCode(errF.Get()) == codes.FailedPrecondition {
 				// Non-retriable error, e.g. the cluster was deleted, or the metrics
@@ -230,9 +227,8 @@ func New(ctx context.Context, conf *v1beta1.AgentConfig, opts ...AgentOption) (*
 			}
 			isRetry = true
 		}
-		lg.With(
-			zap.Error(ctx.Err()),
-		).Warn("shutting down gateway client")
+		lg.Warn("shutting down gateway client", logger.Err(ctx.Err()))
+
 	}()
 
 	router.POST("/api/agent/push", gin.WrapH(push.Handler(100<<20, nil, agent.pushFunc)))
@@ -281,7 +277,7 @@ func (a *Agent) bootstrap(ctx context.Context) (keyring.Keyring, error) {
 			// Keep retrying until it succeeds.
 			err = a.keyringStore.Put(ctx, newKeyring)
 			if err != nil {
-				lg.With(zap.Error(err)).Error("failed to persist keyring (retry in 1 second)")
+				lg.Error("failed to persist keyring (retry in 1 second)", logger.Err(err))
 				time.Sleep(1 * time.Second)
 			} else {
 				break
@@ -402,9 +398,8 @@ func (a *Agent) clearCondition(key string, reason ...string) {
 		lg = lg.With("reason", reason[0])
 	}
 	if v, ok := a.conditions.Load(key); ok {
-		lg.With(
-			"previous", v,
-		).Info("condition cleared")
+		lg.Info("condition cleared", "previous", v)
+
 	}
 	a.conditions.Delete(key)
 }

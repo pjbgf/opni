@@ -9,11 +9,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	"github.com/go-kit/log"
 	"github.com/rancher/opni/pkg/alerting/shared"
+	"github.com/rancher/opni/pkg/logger"
 	"github.com/rancher/opni/plugins/metrics/apis/cortexops"
 	"github.com/rancher/opni/plugins/metrics/pkg/cortex/configutil"
 	"github.com/samber/lo"
 	"github.com/weaveworks/common/server"
-	"go.uber.org/zap"
 
 	"github.com/cortexproject/cortex/pkg/util/tls"
 	"github.com/rancher/opni/pkg/resources"
@@ -102,22 +102,19 @@ func (r *Reconciler) config() ([]resources.Resource, string, error) {
 		return nil, "", err
 	}
 	if err := conf.Validate(log.NewNopLogger()); err != nil {
-		r.logger.With(
-			zap.Error(err),
-		).Warn("Cortex config failed validation (ignoring)")
+		r.logger.Warn("Cortex config failed validation (ignoring)", logger.Err(err))
+
 	}
 	confBytes, err := configutil.MarshalCortexConfig(conf)
 	if err != nil {
-		r.logger.With(
-			zap.Error(err),
-		).Error("Failed to marshal cortex config (cannot continue)")
+		r.logger.Error("Failed to marshal cortex config (cannot continue)", logger.Err(err))
+
 		return nil, "", err
 	}
 	rtConfBytes, err := configutil.MarshalRuntimeConfig(rtConf)
 	if err != nil {
-		r.logger.With(
-			zap.Error(err),
-		).Error("Failed to marshal cortex runtime config (cannot continue)")
+		r.logger.Error("Failed to marshal cortex runtime config (cannot continue)", logger.Err(err))
+
 		return nil, "", err
 	}
 	configSecret := &corev1.Secret{

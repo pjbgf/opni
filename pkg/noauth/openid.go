@@ -14,7 +14,7 @@ import (
 	"github.com/ory/fosite/handler/openid"
 	"github.com/ory/fosite/storage"
 	openidauth "github.com/rancher/opni/pkg/auth/openid"
-	"go.uber.org/zap"
+	"github.com/rancher/opni/pkg/logger"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -199,9 +199,8 @@ func (s *Server) handleAuthorizeRequest(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 	ar, err := s.noauthProvider.NewAuthorizeRequest(ctx, r)
 	if err != nil {
-		lg.With(
-			zap.Error(err),
-		).Error("authorize request failed")
+		lg.Error("authorize request failed", logger.Err(err))
+
 		s.noauthProvider.WriteAuthorizeError(ctx, w, ar, err)
 		return
 	}
@@ -214,13 +213,11 @@ func (s *Server) handleAuthorizeRequest(w http.ResponseWriter, r *http.Request) 
 		s.renderLoginPage(w, r)
 		return
 	}
-	lg.With(
-		"user", username,
+	lg.Debug("username provided", "user", username,
 		"scopes", ar.GetRequestedScopes(),
 		"id", ar.GetClient().GetID(),
 		"gt", ar.GetClient().GetGrantTypes(),
-		"rt", ar.GetClient().GetResponseTypes(),
-	).Debug("username provided")
+		"rt", ar.GetClient().GetResponseTypes())
 
 	for _, scope := range ar.GetRequestedScopes() {
 		ar.GrantScope(scope)
@@ -237,16 +234,13 @@ func (s *Server) handleAuthorizeRequest(w http.ResponseWriter, r *http.Request) 
 
 	resp, err := s.noauthProvider.NewAuthorizeResponse(ctx, ar, session)
 	if err != nil {
-		lg.With(
-			zap.Error(err),
-		).Error("authorize response failed")
+		lg.Error("authorize response failed", logger.Err(err))
+
 		s.noauthProvider.WriteAuthorizeError(ctx, w, ar, err)
 		return
 	}
 
-	lg.With(
-		"code", resp.GetCode(),
-	).Debug("sending code")
+	lg.Debug("sending code", "code", resp.GetCode())
 
 	s.noauthProvider.WriteAuthorizeResponse(ctx, w, ar, resp)
 }
@@ -263,17 +257,14 @@ func (s *Server) handleTokenRequest(w http.ResponseWriter, r *http.Request) {
 	ar, err := s.noauthProvider.NewAccessRequest(ctx, r, session)
 
 	if err != nil {
-		lg.With(
-			zap.Error(err),
-		).Error("token request failed")
+		lg.Error("token request failed", logger.Err(err))
+
 		s.noauthProvider.WriteAccessError(ctx, w, ar, err)
 		return
 	}
-	lg.With(
-		"client", ar.GetClient().GetID(),
+	lg.Debug("access request accepted", "client", ar.GetClient().GetID(),
 		"gt", ar.GetClient().GetGrantTypes(),
-		"rt", ar.GetClient().GetResponseTypes(),
-	).Debug("access request accepted")
+		"rt", ar.GetClient().GetResponseTypes())
 
 	if ar.GetGrantTypes().ExactOne("client_credentials") {
 		for _, scope := range ar.GetRequestedScopes() {
@@ -283,20 +274,17 @@ func (s *Server) handleTokenRequest(w http.ResponseWriter, r *http.Request) {
 
 	response, err := s.noauthProvider.NewAccessResponse(ctx, ar)
 	if err != nil {
-		lg.With(
-			zap.Error(err),
-		).Error("token response failed")
+		lg.Error("token response failed", logger.Err(err))
+
 		s.noauthProvider.WriteAccessError(ctx, w, ar, err)
 		return
 	}
 
-	lg.With(
-		"type", response.GetTokenType(),
+	lg.Debug("sending token response", "type", response.GetTokenType(),
 		"access_token", response.GetAccessToken(),
 		"id_token", response.GetExtra("id_token"),
 		"expires_in", response.GetExtra("expires_in"),
-		"refresh_token", response.GetExtra("refresh_token"),
-	).Debug("sending token response")
+		"refresh_token", response.GetExtra("refresh_token"))
 
 	s.noauthProvider.WriteAccessResponse(ctx, w, ar, response)
 }
@@ -323,17 +311,14 @@ func (s *Server) handleUserInfoRequest(rw http.ResponseWriter, req *http.Request
 	token = strings.TrimSpace(strings.TrimPrefix(token, "Bearer"))
 	tokenType, ar, err := s.noauthProvider.IntrospectToken(req.Context(), token, fosite.AccessToken, session)
 	if err != nil {
-		lg.With(
-			zap.Error(err),
-		).Error("user info request failed")
+		lg.Error("user info request failed", logger.Err(err))
+
 		rw.WriteHeader(http.StatusUnauthorized)
 		rw.Write([]byte("invalid token"))
 		return
 	}
-	lg.With(
-		"token", token,
-		"type", tokenType,
-	).Debug("token received")
+	lg.Debug("token received", "token", token,
+		"type", tokenType)
 
 	if tokenType != fosite.AccessToken {
 		rw.WriteHeader(http.StatusUnauthorized)
@@ -357,9 +342,8 @@ func (s *Server) handleUserInfoRequest(rw http.ResponseWriter, req *http.Request
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	lg.With(
-		"claims", string(jsonData),
-	).Debug("sending user info response")
+	lg.Debug("sending user info response", "claims", string(jsonData))
+
 	rw.WriteHeader(http.StatusOK)
 	rw.Write(jsonData)
 }

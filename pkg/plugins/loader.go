@@ -7,13 +7,14 @@ import (
 	"sync"
 	"time"
 
+	"log/slog"
+
 	"github.com/hashicorp/go-plugin"
 	"github.com/samber/lo"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/atomic"
-	"go.uber.org/zap"
 
 	controlv1 "github.com/rancher/opni/pkg/apis/control/v1"
 	"github.com/rancher/opni/pkg/logger"
@@ -63,7 +64,7 @@ type PluginLoader struct {
 }
 
 type PluginLoaderOptions struct {
-	logger *zap.SugaredLogger
+	logger *slog.Logger
 }
 
 type PluginLoaderOption func(*PluginLoaderOptions)
@@ -74,7 +75,7 @@ func (o *PluginLoaderOptions) apply(opts ...PluginLoaderOption) {
 	}
 }
 
-func WithLogger(lg *zap.SugaredLogger) PluginLoaderOption {
+func WithLogger(lg *slog.Logger) PluginLoaderOption {
 	return func(o *PluginLoaderOptions) {
 		o.logger = lg
 	}
@@ -84,9 +85,9 @@ func NewPluginLoader(opts ...PluginLoaderOption) *PluginLoader {
 	options := PluginLoaderOptions{}
 	options.apply(opts...)
 	if options.logger == nil {
-		options.logger = logger.New().Named("pluginloader")
+		options.logger = logger.New().WithGroup("pluginloader")
 	} else {
-		options.logger = options.logger.Named("pluginloader")
+		options.logger = options.logger.WithGroup("pluginloader")
 	}
 
 	return &PluginLoader{
@@ -145,39 +146,35 @@ func (p *PluginLoader) LoadOne(ctx context.Context, md meta.PluginMeta, cc *plug
 	defer span.End()
 
 	lg := p.logger.With(
-		zap.String("plugin", md.Module),
+		"plugin", md.Module,
 	)
 	lg.Info("loading plugin")
 
 	client := plugin.NewClient(cc)
 	rpcClient, err := client.Client()
 	if err != nil {
-		lg.With(
-			zap.Error(err),
-		).Error("failed to load plugin")
+		lg.Error("failed to load plugin", logger.Err(err))
+
 		return
 	}
-	lg.With(
-		"interfaces", lo.Keys(cc.Plugins),
-	).Debug("checking if plugin implements any interfaces in the scheme")
+	lg.Debug("checking if plugin implements any interfaces in the scheme", "interfaces", lo.Keys(cc.Plugins))
+
 	wg := &sync.WaitGroup{}
 	for id := range cc.Plugins {
 		raw, err := rpcClient.Dispense(id)
 		if err != nil {
-			lg.With(
-				zap.Error(err),
-				"id", id,
-			).Debug("no implementation found")
+			lg.Debug("no implementation found", logger.Err(err),
+				"id", id)
+
 			continue
 		}
-		lg.With(
-			"id", id,
-		).Debug("implementation found")
+		lg.Debug("implementation found", "id", id)
+
 		if c, ok := rpcClient.(*plugin.GRPCClient); ok {
 			p.hooksMu.RLock()
 			numHooks := len(p.loadHooks)
 			if numHooks > 0 {
-				lg.Debugf("invoking load hooks (%d)", numHooks)
+				lg.Debug(fmt.Sprintf("invoking load hooks (%d)", numHooks))
 			}
 			for _, h := range p.loadHooks {
 				if h.hook.ShouldInvoke(raw) {
@@ -192,10 +189,9 @@ func (p *PluginLoader) LoadOne(ctx context.Context, md meta.PluginMeta, cc *plug
 						select {
 						case <-done:
 						case <-time.After(time.Second * 5):
-							lg.With(
-								"id", id,
-								"caller", h.caller,
-							).Warn("hook is taking longer than expected to complete")
+							lg.Warn("hook is taking longer than expected to complete", "id", id,
+								"caller", h.caller)
+
 							<-done
 						}
 					}()
@@ -260,9 +256,8 @@ func (p *PluginLoader) LoadPlugins(ctx context.Context, pluginDir string, scheme
 		for _, entry := range options.manifest.Items {
 			entryURN, err := urn.ParseString(entry.Package)
 			if err != nil {
-				p.logger.With(
-					"package", entry.Package,
-				).Warn("invalid package in manifest")
+				p.logger.Warn("invalid package in manifest", "package", entry.Package)
+
 				continue
 			}
 			secureConfigs[entryURN.Component] = &plugin.SecureConfig{

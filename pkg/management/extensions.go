@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"log/slog"
+
 	dpb "github.com/golang/protobuf/protoc-gen-go/descriptor"
 	"github.com/gorilla/websocket"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -19,7 +21,6 @@ import (
 	"github.com/jhump/protoreflect/dynamic/grpcdynamic"
 	"github.com/jhump/protoreflect/grpcreflect"
 	gsync "github.com/kralicky/gpkg/sync"
-	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/genproto/googleapis/api/annotations"
 	"google.golang.org/grpc"
@@ -70,10 +71,9 @@ func (m *Server) configureApiExtensionDirector(ctx context.Context, pl plugins.L
 		reflectClient := grpcreflect.NewClientAuto(ctx, cc)
 		sds, err := p.Descriptors(ctx, &emptypb.Empty{})
 		if err != nil {
-			m.logger.With(
-				zap.Error(err),
-				zap.String("plugin", md.Module),
-			).Error("failed to get extension descriptors")
+			m.logger.Error("failed to get extension descriptors", logger.Err(err),
+				"plugin", md.Module)
+
 			return
 		}
 		for _, sd := range sds.Items {
@@ -81,21 +81,17 @@ func (m *Server) configureApiExtensionDirector(ctx context.Context, pl plugins.L
 
 			svcDesc, err := reflectClient.ResolveService(sd.GetName())
 			if err != nil {
-				m.logger.With(
-					zap.Error(err),
-				).Error("failed to resolve extension service")
+				m.logger.Error("failed to resolve extension service", logger.Err(err))
+
 				return
 			}
 
 			svcName := sd.GetName()
-			lg.With(
-				"name", svcName,
-			).Info("loading service")
+			lg.Info("loading service", "name", svcName)
+
 			for _, mtd := range svcDesc.GetMethods() {
 				fullName := fmt.Sprintf("/%s/%s", svcName, mtd.GetName())
-				lg.With(
-					"name", fullName,
-				).Info("loading method")
+				lg.Info("loading method", "name", fullName)
 
 				methodTable.Store(fullName, &UnknownStreamMetadata{
 					Conn:            cc,
@@ -107,18 +103,15 @@ func (m *Server) configureApiExtensionDirector(ctx context.Context, pl plugins.L
 			}
 			httpRules := loadHttpRuleDescriptors(svcDesc)
 			if len(httpRules) > 0 {
-				lg.With(
-					"name", svcName,
-					"rules", len(httpRules),
-				).Info("loading http rules")
-				lg.With(
-					"name", svcName,
-					"rules", httpRules,
-				).Debug("rule descriptors")
+				lg.Info("loading http rules", "name", svcName,
+					"rules", len(httpRules))
+
+				lg.Debug("rule descriptors", "name", svcName,
+					"rules", httpRules)
+
 			} else {
-				lg.With(
-					"name", svcName,
-				).Info("service has no http rules")
+				lg.Info("service has no http rules", "name", svcName)
+
 			}
 
 			client := apiextensions.NewManagementAPIExtensionClient(cc)
@@ -211,16 +204,14 @@ func (m *Server) configureServiceStubHandlers(
 		qualifiedPath := fmt.Sprintf("/%s%s", svcDesc.GetName(), path)
 
 		if err := mux.HandlePath(method, qualifiedPath, newHandler(stub, svcDesc, mux, rule, path)); err != nil {
-			lg.With(
-				zap.Error(err),
-				zap.String("method", method),
-				zap.String("path", qualifiedPath),
-			).Error("failed to configure http handler")
+			lg.Error("failed to configure http handler", logger.Err(err),
+				"method", method,
+				"path", qualifiedPath)
+
 		} else {
-			lg.With(
-				zap.String("method", method),
-				zap.String("path", qualifiedPath),
-			).Debug("configured http handler")
+			lg.Debug("configured http handler", "method", method,
+				"path", qualifiedPath)
+
 		}
 	}
 }
@@ -258,7 +249,7 @@ func newHandler(
 	rule *managementv1.HTTPRuleDescriptor,
 	path string,
 ) runtime.HandlerFunc {
-	lg := logger.New().Named("apiext")
+	lg := logger.New().WithGroup("apiext")
 
 	return func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		lg := lg.With(
@@ -280,7 +271,7 @@ func newHandler(
 
 		ctx, err := runtime.AnnotateContext(ctx, mux, req, methodDesc.GetFullyQualifiedName(), runtime.WithHTTPPathPattern(path))
 		if err != nil {
-			lg.Error(err)
+			lg.Error("error", logger.Err(err))
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err) // already a grpc error
 			return
 		}
@@ -295,12 +286,12 @@ func newHandler(
 				WriteBufferSize: 1024,
 			}).Upgrade(w, req, http.Header{})
 			if err != nil {
-				lg.With(zap.Error(err)).Error("failed to upgrade connection")
+				lg.Error("failed to upgrade connection", logger.Err(err))
 				return
 			}
 
 			if err := handleWebsocketStream(ctx, conn, stub, methodDesc, lg); err != nil {
-				lg.With(zap.Error(err)).Error("websocket stream error")
+				lg.Error("websocket stream error", logger.Err(err))
 				// can't send http errors after the connection has been hijacked
 			}
 			return
@@ -309,11 +300,10 @@ func newHandler(
 		reqMsg := dynamic.NewMessage(methodDesc.GetInputType())
 		for k, v := range pathParams {
 			if err := decodeAndSetField(reqMsg, k, v); err != nil {
-				lg.With(
-					"key", k,
+				lg.Error("failed to decode path parameter", "key", k,
 					"value", v,
-					zap.Error(err),
-				).Error("failed to decode path parameter")
+					logger.Err(err))
+
 				runtime.HTTPError(ctx, mux, outboundMarshaler, w, req,
 					status.Errorf(codes.InvalidArgument, err.Error()))
 				return
@@ -323,7 +313,7 @@ func newHandler(
 		body, err := io.ReadAll(req.Body)
 		req.Body.Close()
 		if err != nil {
-			lg.Error(err)
+			lg.Error("error", logger.Err(err))
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req,
 				status.Errorf(codes.InvalidArgument, err.Error()))
 			return
@@ -370,9 +360,11 @@ func newHandler(
 				}
 			}
 			if err != nil {
-				lg.With(
-					zap.Error(err),
-				).Errorf("failed to unmarshal request body into %q", bodyFieldPath)
+				lg.Error(fmt.Sprintf(
+
+					"failed to unmarshal request body into %q", bodyFieldPath),
+					logger.Err(err))
+
 				// special case here, make empty string errors more obvious
 				if strings.HasSuffix(err.Error(), "named ") { // note the trailing space
 					err = fmt.Errorf("%w(empty)", err)
@@ -388,34 +380,29 @@ func newHandler(
 		resp, err := stub.InvokeRpc(ctx, methodDesc, reqMsg,
 			grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 		if err != nil {
-			lg.With(
-				zap.Error(err),
-			).Debug("rpc error")
+			lg.Debug("rpc error", logger.Err(err))
+
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 		d, err := dynamic.AsDynamicMessage(resp)
 		if err != nil {
-			lg.With(
-				zap.Error(err),
-			).Error("bad response message")
+			lg.Error("bad response message", logger.Err(err))
+
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req,
 				status.Errorf(codes.Internal, "internal error: bad response message: %v", err))
 		}
 		respData, err := outboundMarshaler.Marshal(d)
 		if err != nil {
-			lg.With(
-				zap.Error(err),
-			).Error("failed to marshal response")
+			lg.Error("failed to marshal response", logger.Err(err))
 
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req,
 				status.Errorf(codes.Internal, "internal error: failed to marshal response: %v", err))
 			return
 		}
 		if _, err := w.Write(respData); err != nil {
-			lg.With(
-				zap.Error(err),
-			).Error("failed to write response")
+			lg.Error("failed to write response", logger.Err(err))
+
 		}
 	}
 }
@@ -430,14 +417,14 @@ func handleWebsocketStream(
 	conn *websocket.Conn,
 	stub grpcdynamic.Stub,
 	methodDesc *desc.MethodDescriptor,
-	lg *zap.SugaredLogger,
+	lg *slog.Logger,
 ) error {
 	isClientStreaming := methodDesc.IsClientStreaming()
 	isServerStreaming := methodDesc.IsServerStreaming()
 	if isClientStreaming && isServerStreaming {
 		backendStream, err := stub.InvokeRpcBidiStream(ctx, methodDesc)
 		if err != nil {
-			lg.With(zap.Error(err)).Error("backend rpc error")
+			lg.Error("backend rpc error", logger.Err(err))
 			return err
 		}
 		return handleWebsocketBidiStream(ctx, conn, backendStream, methodDesc)
@@ -448,13 +435,13 @@ func handleWebsocketStream(
 	}
 	backendStream, err := stub.InvokeRpcClientStream(ctx, methodDesc)
 	if err != nil {
-		lg.With(zap.Error(err)).Error("backend rpc error")
+		lg.Error("backend rpc error", logger.Err(err))
 		return err
 	}
 	return handleWebsocketClientStream(ctx, conn, backendStream, methodDesc, lg)
 }
 
-func handleWebsocketClientStream(_ context.Context, _ *websocket.Conn, _ *grpcdynamic.ClientStream, _ *desc.MethodDescriptor, _ *zap.SugaredLogger) error {
+func handleWebsocketClientStream(_ context.Context, _ *websocket.Conn, _ *grpcdynamic.ClientStream, _ *desc.MethodDescriptor, _ *slog.Logger) error {
 	return fmt.Errorf("not implemented")
 }
 
@@ -463,7 +450,7 @@ func handleWebsocketServerStream(
 	conn *websocket.Conn,
 	stub grpcdynamic.Stub,
 	methodDesc *desc.MethodDescriptor,
-	lg *zap.SugaredLogger,
+	lg *slog.Logger,
 ) error {
 	lg.Debug("handling websocket server stream")
 
@@ -493,7 +480,7 @@ func handleWebsocketServerStream(
 			}
 			dm, err := dynamic.AsDynamicMessage(resp)
 			if err != nil {
-				lg.With(zap.Error(err)).Warn("could not convert message to dynamic message")
+				lg.Warn("could not convert message to dynamic message", logger.Err(err))
 				continue
 			}
 			send <- dm
@@ -506,7 +493,7 @@ func handleWebsocketServerStream(
 		for ctx.Err() == nil {
 			msgType, data, err := conn.ReadMessage()
 			if err != nil {
-				lg.With(zap.Error(err)).Error("error reading from websocket")
+				lg.Error("error reading from websocket", logger.Err(err))
 				return err
 			}
 			switch msgType {
@@ -566,10 +553,10 @@ func handleWebsocketServerStream(
 
 	err := eg.Wait()
 	if err != nil {
-		lg.With(zap.Error(err)).Error("error occurred handling websocket")
+		lg.Error("error occurred handling websocket", logger.Err(err))
 	}
 	if err := conn.Close(); err != nil {
-		lg.With(zap.Error(err)).Error("error occurred while closing websocket")
+		lg.Error("error occurred while closing websocket", logger.Err(err))
 	}
 	return err
 }

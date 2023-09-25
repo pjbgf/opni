@@ -8,10 +8,10 @@ import (
 
 	"github.com/cisco-open/operator-tools/pkg/reconciler"
 	corev1beta1 "github.com/rancher/opni/apis/core/v1beta1"
+	"github.com/rancher/opni/pkg/logger"
 	"github.com/rancher/opni/pkg/resources"
 	"github.com/rancher/opni/pkg/util/k8sutil"
 	"github.com/samber/lo"
-	"go.uber.org/zap"
 	appsv1 "k8s.io/api/apps/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/util/retry"
@@ -57,7 +57,7 @@ func (r *Reconciler) updateCortexVersionStatus() (bool, error) {
 			return r.client.Status().Update(r.ctx, r.mc)
 		})
 		if err != nil {
-			lg.With(zap.Error(err)).Error("failed to update cortex version status")
+			lg.Error("failed to update cortex version status", logger.Err(err))
 			return false, err
 		}
 	}

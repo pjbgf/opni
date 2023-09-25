@@ -5,9 +5,10 @@ import (
 	"sync"
 	"time"
 
+	"log/slog"
+
 	gsync "github.com/kralicky/gpkg/sync"
 	"go.uber.org/atomic"
-	"go.uber.org/zap"
 )
 
 type ConditionStatus int32
@@ -60,7 +61,7 @@ type ConditionTracker interface {
 	AddListener(listener any)
 }
 
-func NewDefaultConditionTracker(logger *zap.SugaredLogger) ConditionTracker {
+func NewDefaultConditionTracker(logger *slog.Logger) ConditionTracker {
 	ct := &defaultConditionTracker{
 		logger:  logger,
 		modTime: atomic.NewTime(time.Now()),
@@ -71,7 +72,7 @@ func NewDefaultConditionTracker(logger *zap.SugaredLogger) ConditionTracker {
 
 type defaultConditionTracker struct {
 	conditions gsync.Map[string, ConditionStatus]
-	logger     *zap.SugaredLogger
+	logger     *slog.Logger
 	modTime    *atomic.Time
 
 	listenersMu sync.Mutex
@@ -105,9 +106,8 @@ func (ct *defaultConditionTracker) Clear(key string, reason ...string) {
 	}
 	if v, ok := ct.conditions.LoadAndDelete(key); ok {
 		ct.modTime.Store(time.Now())
-		lg.With(
-			"previous", v,
-		).Info("condition cleared")
+		lg.Info("condition cleared", "previous", v)
+
 		ct.notifyListeners(key, nil, "")
 	}
 }

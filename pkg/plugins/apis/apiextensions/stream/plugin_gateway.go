@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 
+	"log/slog"
+
 	"github.com/hashicorp/go-plugin"
 	"github.com/jhump/protoreflect/grpcreflect"
 	"github.com/kralicky/totem"
@@ -20,7 +22,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
-	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -68,7 +69,7 @@ func NewGatewayPlugin(p StreamAPIExtension, opts ...GatewayStreamApiExtensionPlu
 
 	ext := &gatewayStreamExtensionServerImpl{
 		name:          name,
-		logger:        logger.NewPluginLogger().Named(name).Named("stream"),
+		logger:        logger.NewPluginLogger().WithGroup(name).WithGroup("stream"),
 		metricsConfig: options.metricsConfig,
 	}
 	if p != nil {
@@ -107,7 +108,7 @@ type gatewayStreamExtensionServerImpl struct {
 	name          string
 	servers       []*richServer
 	clientHandler StreamClientHandler
-	logger        *zap.SugaredLogger
+	logger        *slog.Logger
 	metricsConfig GatewayStreamMetricsConfig
 	meterProvider *metric.MeterProvider
 }
@@ -116,9 +117,7 @@ type gatewayStreamExtensionServerImpl struct {
 func (e *gatewayStreamExtensionServerImpl) Connect(stream streamv1.Stream_ConnectServer) error {
 	id := cluster.StreamAuthorizedID(stream.Context())
 
-	e.logger.With(
-		zap.String("id", id),
-	).Debug("stream connected")
+	e.logger.Debug("stream connected", "id", id)
 
 	opts := []totem.ServerOption{
 		totem.WithName("gateway-apiext"),
@@ -143,9 +142,8 @@ func (e *gatewayStreamExtensionServerImpl) Connect(stream streamv1.Stream_Connec
 	ts, err := totem.NewServer(stream, opts...)
 
 	if err != nil {
-		e.logger.With(
-			zap.Error(err),
-		).Error("failed to create stream server")
+		e.logger.Error("failed to create stream server", logger.Err(err))
+
 		return err
 	}
 	for _, srv := range e.servers {
@@ -162,9 +160,8 @@ func (e *gatewayStreamExtensionServerImpl) Connect(stream streamv1.Stream_Connec
 	} else if status.Code(err) == codes.Canceled {
 		e.logger.Debug("stream server closed")
 	} else {
-		e.logger.With(
-			zap.Error(err),
-		).Warn("stream server exited with error")
+		e.logger.Warn("stream server exited with error", logger.Err(err))
+
 	}
 	return err
 }
@@ -200,9 +197,8 @@ func (e *gatewayStreamExtensionServerImpl) ConnectInternal(stream apiextensions.
 		} else if status.Code(err) == codes.Canceled {
 			e.logger.Debug("stream closed")
 		} else {
-			e.logger.With(
-				zap.Error(err),
-			).Warn("stream disconnected with error")
+			e.logger.Warn("stream disconnected with error", logger.Err(err))
+
 		}
 		return err
 	default:

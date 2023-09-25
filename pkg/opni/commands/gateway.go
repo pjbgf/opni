@@ -5,6 +5,8 @@ package commands
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"sync/atomic"
 
 	"github.com/hashicorp/go-plugin"
@@ -25,7 +27,6 @@ import (
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 	"github.com/ttacon/chalk"
-	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/client-go/rest"
 
@@ -52,7 +53,8 @@ func BuildGatewayCmd() *cobra.Command {
 			if errors.Is(err, rest.ErrNotInCluster) {
 				inCluster = false
 			} else {
-				lg.Fatalf("failed to create config: %s", err)
+				lg.Error(fmt.Sprintf("failed to create config: %s", err))
+				os.Exit(1)
 			}
 		}
 
@@ -78,15 +80,14 @@ func BuildGatewayCmd() *cobra.Command {
 			},
 		)
 		if !found {
-			lg.With(
-				zap.String("config", configLocation),
-			).Fatal("config file does not contain a GatewayConfig object")
+			lg.Error("config file does not contain a GatewayConfig object", "config", configLocation)
+			os.Exit(1)
+
 		}
 
-		lg.With(
-			"dir", gatewayConfig.Spec.Plugins.Dir,
-		).Info("loading plugins")
-		pluginLoader := plugins.NewPluginLoader(plugins.WithLogger(lg.Named("gateway")))
+		lg.Info("loading plugins", "dir", gatewayConfig.Spec.Plugins.Dir)
+
+		pluginLoader := plugins.NewPluginLoader(plugins.WithLogger(lg.WithGroup("gateway")))
 
 		lifecycler := config.NewLifecycler(objects)
 		g := gateway.NewGateway(ctx, gatewayConfig, pluginLoader,
@@ -104,7 +105,7 @@ func BuildGatewayCmd() *cobra.Command {
 
 		doneLoadingPlugins := make(chan struct{})
 		pluginLoader.Hook(hooks.OnLoadingCompleted(func(numLoaded int) {
-			lg.Infof("loaded %d plugins", numLoaded)
+			lg.Info(fmt.Sprintf("loaded %d plugins", numLoaded))
 			close(doneLoadingPlugins)
 		}))
 		pluginLoader.LoadPlugins(ctx, gatewayConfig.Spec.Plugins.Dir, plugins.GatewayScheme)
@@ -120,7 +121,7 @@ func BuildGatewayCmd() *cobra.Command {
 			if errors.Is(err, context.Canceled) {
 				lg.Info("gateway server stopped")
 			} else if err != nil {
-				lg.With(zap.Error(err)).Warn("gateway server exited with error")
+				lg.Warn("gateway server exited with error", logger.Err(err))
 			}
 			return err
 		})
@@ -129,21 +130,22 @@ func BuildGatewayCmd() *cobra.Command {
 			if errors.Is(err, context.Canceled) {
 				lg.Info("management server stopped")
 			} else if err != nil {
-				lg.With(zap.Error(err)).Warn("management server exited with error")
+				lg.Warn("management server exited with error", logger.Err(err))
 			}
 			return err
 		})
 
 		d, err := dashboard.NewServer(&gatewayConfig.Spec.Management)
 		if err != nil {
-			lg.With(zap.Error(err)).Error("failed to start dashboard server")
+			lg.Error("failed to start dashboard server", logger.Err(err))
+
 		} else {
 			eg.Go(func() error {
 				err := d.ListenAndServe(ctx)
 				if errors.Is(err, context.Canceled) {
 					lg.Info("dashboard server stopped")
 				} else if err != nil {
-					lg.With(zap.Error(err)).Warn("dashboard server exited with error")
+					lg.Warn("dashboard server exited with error", logger.Err(err))
 				}
 				return err
 			})
@@ -155,7 +157,7 @@ func BuildGatewayCmd() *cobra.Command {
 				if errors.Is(err, context.Canceled) {
 					lg.Info("noauth server stopped")
 				} else if err != nil {
-					lg.With(zap.Error(err)).Warn("noauth server exited with error")
+					lg.Warn("noauth server exited with error", logger.Err(err))
 				}
 				return err
 			})
@@ -176,9 +178,9 @@ func BuildGatewayCmd() *cobra.Command {
 			}
 
 			if err != nil {
-				lg.With(
-					zap.Error(err),
-				).Fatal("failed to get reload channel from lifecycler")
+				lg.Error("failed to get reload channel from lifecycler", logger.Err(err))
+				os.Exit(1)
+
 			}
 			select {
 			case <-c:

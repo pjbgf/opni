@@ -55,9 +55,10 @@ func (s SLOMonitoring) Update(existing *sloapi.SLOData) (*sloapi.SLOData, error)
 	if err == nil && existing.SLO.ClusterId != incomingSLO.SLO.ClusterId {
 		_, err := s.p.DeleteSLO(s.ctx, &corev1.Reference{Id: existing.Id})
 		if err != nil {
-			s.lg.With("sloId", existing.Id).Error(fmt.Sprintf(
+			s.lg.Error(fmt.Sprintf(
 				"Unable to delete SLO when updating between clusters :  %v",
-				err))
+				err), "sloId", existing.Id)
+
 		}
 	}
 	return incomingSLO, err
@@ -100,7 +101,7 @@ func (s SLOMonitoring) Delete(existing *sloapi.SLOData) error {
 	}
 	err := createGrafanaSLOMask(s.ctx, s.p, clusterId, id)
 	if err != nil {
-		s.p.logger.Errorf("creating grafana mask failed %s", err)
+		s.p.logger.Error(fmt.Sprintf("creating grafana mask failed %s", err))
 		errArr = append(errArr, err)
 	}
 	return errors.Combine(errArr...)
@@ -235,7 +236,7 @@ func (s SLOMonitoring) Status(existing *sloapi.SLOData) (*sloapi.SLOStatus, erro
 	if sliDataVector == nil || sliDataVector.Len() == 0 {
 		return &sloapi.SLOStatus{State: sloapi.SLOStatusState_NoData}, nil
 	}
-	s.lg.With("sloId", slo.GetId()).Debug("sli status response vector : ", sliDataVector.String())
+	s.lg.Debug(fmt.Sprintf("sli status response vector : %s", sliDataVector.String()), "sloId", slo.GetId())
 	// ======================= error budget =======================
 	// race condition can cause initial evaluation to fail with empty vector, resulting in no data state
 	// this is why we return creating state with two intervals
@@ -251,7 +252,7 @@ func (s SLOMonitoring) Status(existing *sloapi.SLOData) (*sloapi.SLOStatus, erro
 	if metadataBudget <= 0 {
 		return &sloapi.SLOStatus{State: sloapi.SLOStatusState_Breaching}, nil
 	}
-	s.lg.With("sloId", slo.GetId()).Debug("sli status ", metadataVector.String())
+	s.lg.Debug(fmt.Sprintf("sli status %s", metadataVector.String()), "sloId", slo.GetId())
 	//
 	//// ======================= alert =======================
 

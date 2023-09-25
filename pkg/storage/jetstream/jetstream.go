@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"log/slog"
+
 	"github.com/iancoleman/strcase"
 	"github.com/lestrrat-go/backoff/v2"
 	"github.com/nats-io/nats.go"
@@ -14,7 +16,6 @@ import (
 	"github.com/rancher/opni/pkg/config/v1beta1"
 	"github.com/rancher/opni/pkg/logger"
 	"github.com/rancher/opni/pkg/storage"
-	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/runtime/protoiface"
@@ -45,7 +46,7 @@ type JetStreamStore struct {
 		Roles        nats.KeyValue
 		RoleBindings nats.KeyValue
 	}
-	logger *zap.SugaredLogger
+	logger *slog.Logger
 }
 
 var _ storage.Backend = (*JetStreamStore)(nil)
@@ -74,7 +75,7 @@ func NewJetStreamStore(ctx context.Context, conf *v1beta1.JetStreamStorageSpec, 
 	}
 	options.apply(opts...)
 
-	lg := logger.New(logger.WithLogLevel(zap.WarnLevel)).Named("jetstream")
+	lg := logger.New(logger.WithLogLevel(slog.LevelWarn)).WithGroup("jetstream")
 
 	nkeyOpt, err := nats.NkeyOptionFromSeed(conf.NkeySeedPath)
 	if err != nil {
@@ -89,17 +90,15 @@ func NewJetStreamStore(ctx context.Context, conf *v1beta1.JetStreamStorageSpec, 
 				lg.Debug("jetstream client closed")
 				return
 			}
-			lg.With(
-				zap.Error(err),
-			).Warn("disconnected from jetstream")
+			lg.Warn("disconnected from jetstream", logger.Err(err))
+
 		}),
 		nats.ReconnectHandler(func(c *nats.Conn) {
-			lg.With(
-				"server", c.ConnectedAddr(),
+			lg.Info("reconnected to jetstream", "server", c.ConnectedAddr(),
 				"id", c.ConnectedServerId(),
 				"name", c.ConnectedServerName(),
-				"version", c.ConnectedServerVersion(),
-			).Info("reconnected to jetstream")
+				"version", c.ConnectedServerVersion())
+
 		}),
 	)
 	if err != nil {
@@ -119,7 +118,7 @@ func NewJetStreamStore(ctx context.Context, conf *v1beta1.JetStreamStorageSpec, 
 	).Start(ctx)
 	for {
 		if rtt, err := nc.RTT(); err == nil {
-			lg.With("rtt", rtt).Info("nats server connection is healthy")
+			lg.Info("nats server connection is healthy", "rtt", rtt)
 			break
 		}
 		select {
@@ -167,18 +166,16 @@ func (s *JetStreamStore) upsertBucket(name string) nats.KeyValue {
 			Replicas: 1,
 		})
 		if err != nil {
-			s.logger.With(
-				"bucket", bucketName,
-				zap.Error(err),
-			).Warn("failed to create bucket, retrying")
+			s.logger.Warn("failed to create bucket, retrying", "bucket", bucketName,
+				logger.Err(err))
+
 			continue
 		}
 		return kv
 	}
-	s.logger.With(
-		"bucket", bucketName,
-		zap.Error(s.ctx.Err()),
-	).Error("failed to create bucket")
+	s.logger.Error("failed to create bucket", "bucket", bucketName,
+		logger.Err(s.ctx.Err()))
+
 	return nil
 }
 

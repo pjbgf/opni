@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/rancher/opni/apis"
+	"github.com/rancher/opni/pkg/logger"
 	"github.com/rancher/opni/pkg/rules"
 	"github.com/rancher/opni/pkg/rules/prometheusrule"
 	"github.com/rancher/opni/pkg/util/k8sutil"
 	"github.com/rancher/opni/pkg/util/notifier"
 	"github.com/rancher/opni/plugins/metrics/apis/remotewrite"
-	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -54,9 +54,7 @@ func (a *Agent) streamRuleGroupUpdates(ctx context.Context) (<-chan [][]byte, er
 		searchInterval = duration
 	}
 	notifier := notifier.NewPeriodicUpdateNotifier(ctx, finder, searchInterval)
-	a.logger.With(
-		zap.String("interval", searchInterval.String()),
-	).Debug("rule discovery notifier configured")
+	a.logger.Debug("rule discovery notifier configured", "interval", searchInterval.String())
 
 	notifierC := notifier.NotifyC(ctx)
 	a.logger.Debug("starting rule group update notifier")
@@ -83,10 +81,9 @@ func (a *Agent) marshalRuleGroups(ruleGroups []rules.RuleGroup) [][]byte {
 	for _, ruleGroup := range ruleGroups {
 		doc, err := yaml.Marshal(ruleGroup)
 		if err != nil {
-			a.logger.With(
-				zap.Error(err),
-				zap.String("group", ruleGroup.Name),
-			).Error("failed to marshal rule group")
+			a.logger.Error("failed to marshal rule group", logger.Err(err),
+				"group", ruleGroup.Name)
+
 			continue
 		}
 		yamlDocs = append(yamlDocs, doc)
@@ -134,9 +131,8 @@ func (a *Agent) streamRulesToGateway(actx context.Context) error {
 					if err != nil {
 						a.setCondition(condRuleSync, statusFailure, err.Error())
 						// retry, unless another update is received from the channel
-						lg.With(
-							zap.Error(err),
-						).Error("failed to send alert rules to gateway (retry in 5 seconds)")
+						lg.Error("failed to send alert rules to gateway (retry in 5 seconds)", logger.Err(err))
+
 						select {
 						case docs = <-pending:
 							lg.Debug("updated rules were received during backoff, retrying immediately")

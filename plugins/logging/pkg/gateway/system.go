@@ -21,17 +21,15 @@ func (p *Plugin) UseManagementAPI(client managementv1.ManagementClient) {
 	p.mgmtApi.Set(client)
 	cfg, err := client.GetConfig(context.Background(), &emptypb.Empty{}, grpc.WaitForReady(true))
 	if err != nil {
-		p.logger.With(
-			"err", err,
-		).Error("failed to get config")
+		p.logger.Error("failed to get config", "err", err)
+
 		os.Exit(1)
 	}
 
 	objectList, err := machinery.LoadDocuments(cfg.Documents)
 	if err != nil {
-		p.logger.With(
-			"err", err,
-		).Error("failed to load config")
+		p.logger.Error("failed to load config", "err", err)
+
 		os.Exit(1)
 	}
 
@@ -40,9 +38,8 @@ func (p *Plugin) UseManagementAPI(client managementv1.ManagementClient) {
 	objectList.Visit(func(config *v1beta1.GatewayConfig) {
 		backend, err := machinery.ConfigureStorageBackend(p.ctx, &config.Spec.Storage)
 		if err != nil {
-			p.logger.With(
-				"err", err,
-			).Error("failed to configure storage backend")
+			p.logger.Error("failed to configure storage backend", "err", err)
+
 			os.Exit(1)
 		}
 		p.storageBackend.Set(backend)
@@ -57,12 +54,11 @@ func (p *Plugin) UseKeyValueStore(client system.KeyValueStoreClient) {
 		opensearchManager: p.opensearchManager,
 		backendDriver:     p.backendDriver,
 		storageBackend:    p.storageBackend,
-		logger:            p.logger.Named("uninstaller"),
+		logger:            p.logger.WithGroup("uninstaller"),
 	})
 	if err != nil {
-		p.logger.With(
-			"err", err,
-		).Error("failed to create task controller")
+		p.logger.Error("failed to create task controller", "err", err)
+
 		os.Exit(1)
 	}
 

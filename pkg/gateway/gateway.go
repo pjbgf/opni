@@ -9,6 +9,8 @@ import (
 	"net"
 	"slices"
 
+	"log/slog"
+
 	"github.com/prometheus/client_golang/prometheus"
 	bootstrapv1 "github.com/rancher/opni/pkg/apis/bootstrap/v1"
 	bootstrapv2 "github.com/rancher/opni/pkg/apis/bootstrap/v2"
@@ -40,7 +42,6 @@ import (
 	"github.com/rancher/opni/pkg/util"
 	"github.com/samber/lo"
 	"github.com/spf13/afero"
-	"go.uber.org/zap"
 	"golang.org/x/mod/module"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -53,7 +54,7 @@ type Gateway struct {
 	GatewayOptions
 	config        *config.GatewayConfig
 	tlsConfig     *tls.Config
-	logger        *zap.SugaredLogger
+	logger        *slog.Logger
 	httpServer    *GatewayHTTPServer
 	grpcServer    *GatewayGRPCServer
 	statusQuerier health.HealthStatusQuerier
@@ -93,23 +94,23 @@ func NewGateway(ctx context.Context, conf *config.GatewayConfig, pl plugins.Load
 	}
 	options.apply(opts...)
 
-	lg := logger.New().Named("gateway")
+	lg := logger.New().WithGroup("gateway")
 	conf.Spec.SetDefaults()
 
 	storageBackend, err := machinery.ConfigureStorageBackend(ctx, &conf.Spec.Storage)
 	if err != nil {
-		lg.With(
-			zap.Error(err),
-		).Panic("failed to configure storage backend")
+		lg.Error("failed to configure storage backend", logger.Err(err))
+		panic(err)
+
 	}
 
 	// configure the server-side installer template with the external hostname
 	// and grpc port which agents will connect to
 	_, port, err := net.SplitHostPort(conf.Spec.GRPCListenAddress)
 	if err != nil {
-		lg.With(
-			zap.Error(err),
-		).Panic("failed to parse listen address")
+		lg.Error("failed to parse listen address", logger.Err(err))
+		panic(err)
+
 	}
 	capBackendStore := capabilities.NewBackendStore(capabilities.ServerInstallerTemplateSpec{
 		Address: conf.Spec.Hostname,
@@ -120,31 +121,27 @@ func NewGateway(ctx context.Context, conf *config.GatewayConfig, pl plugins.Load
 	pl.Hook(hooks.OnLoadM(func(p types.CapabilityBackendPlugin, md meta.PluginMeta) {
 		info, err := p.Info(ctx, &emptypb.Empty{})
 		if err != nil {
-			lg.With(
-				zap.String("plugin", md.Module),
-			).Error("failed to get capability info")
+			lg.Error("failed to get capability info", "plugin", md.Module)
+
 			return
 		}
 		if err := capBackendStore.Add(info.Name, p); err != nil {
-			lg.With(
-				zap.String("plugin", md.Module),
-				zap.Error(err),
-			).Error("failed to add capability backend")
+			lg.Error("failed to add capability backend", "plugin", md.Module,
+				logger.Err(err))
+
 		}
-		lg.With(
-			zap.String("plugin", md.Module),
-			zap.String("capability", info.Name),
-		).Info("added capability backend")
+		lg.Info("added capability backend", "plugin", md.Module,
+			"capability", info.Name)
+
 	}))
 
 	// serve system plugin kv stores
 	pl.Hook(hooks.OnLoadM(func(p types.SystemPlugin, md meta.PluginMeta) {
 		ns := md.Module
 		if err := module.CheckPath(ns); err != nil {
-			lg.With(
-				zap.String("namespace", ns),
-				zap.Error(err),
-			).Warn("system plugin module name is invalid")
+			lg.Warn("system plugin module name is invalid", "namespace", ns,
+				logger.Err(err))
+
 			return
 		}
 		store := storageBackend.KeyValueStore(ns)
@@ -155,10 +152,9 @@ func NewGateway(ctx context.Context, conf *config.GatewayConfig, pl plugins.Load
 	pl.Hook(hooks.OnLoadM(func(p types.SystemPlugin, md meta.PluginMeta) {
 		ns := md.Module
 		if err := module.CheckPath(ns); err != nil {
-			lg.With(
-				zap.String("namespace", ns),
-				zap.Error(err),
-			).Warn("system plugin module name is invalid")
+			lg.Warn("system plugin module name is invalid", "namespace", ns,
+				logger.Err(err))
+
 			return
 		}
 		go p.ServeCachingProvider()
@@ -172,24 +168,24 @@ func NewGateway(ctx context.Context, conf *config.GatewayConfig, pl plugins.Load
 		Fs: afero.NewOsFs(),
 	}, conf.Spec.Keyring.EphemeralKeyDirs...)
 	if err != nil {
-		lg.With(
-			zap.Error(err),
-		).Panic("failed to load ephemeral keys")
+		lg.Error("failed to load ephemeral keys", logger.Err(err))
+		panic(err)
+
 	}
 
-	v1Verifier := challenges.NewKeyringVerifier(storageBackend, authv1.DomainString, lg.Named("authv1"))
-	v2Verifier := challenges.NewKeyringVerifier(storageBackend, authv2.DomainString, lg.Named("authv2"))
+	v1Verifier := challenges.NewKeyringVerifier(storageBackend, authv1.DomainString, lg.WithGroup("authv1"))
+	v2Verifier := challenges.NewKeyringVerifier(storageBackend, authv2.DomainString, lg.WithGroup("authv2"))
 
 	sessionAttrChallenge, err := session.NewServerChallenge(
 		keyring.New(lo.ToAnySlice(ephemeralKeys)...))
 	if err != nil {
-		lg.With(
-			zap.Error(err),
-		).Panic("failed to configure authentication")
+		lg.Error("failed to configure authentication", logger.Err(err))
+		panic(err)
+
 	}
 
-	v1Challenge := authv1.NewServerChallenge(streamv1.Stream_Connect_FullMethodName, v1Verifier, lg.Named("authv1"))
-	v2Challenge := authv2.NewServerChallenge(v2Verifier, lg.Named("authv2"))
+	v1Challenge := authv1.NewServerChallenge(streamv1.Stream_Connect_FullMethodName, v1Verifier, lg.WithGroup("authv1"))
+	v2Challenge := authv2.NewServerChallenge(v2Verifier, lg.WithGroup("authv2"))
 
 	clusterAuth := cluster.StreamServerInterceptor(challenges.Chained(
 		challenges.If(authv2.ShouldEnableIncoming).Then(v2Challenge).Else(v1Challenge),
@@ -210,24 +206,23 @@ func NewGateway(ctx context.Context, conf *config.GatewayConfig, pl plugins.Load
 		}),
 	)
 	if err != nil {
-		lg.With(
-			zap.Error(err),
-		).Panic("failed to create plugin sync server")
+		lg.Error("failed to create plugin sync server", logger.Err(err))
+		panic(err)
+
 	}
 
 	if err := binarySyncServer.RunGarbageCollection(ctx, storageBackend); err != nil {
-		lg.With(
-			zap.Error(err),
-		).Error("failed to run garbage collection")
+		lg.Error("failed to run garbage collection", logger.Err(err))
+
 	}
 
 	updateServer.RegisterUpdateHandler(binarySyncServer.Strategy(), binarySyncServer)
 
 	kubernetesSyncServer, err := k8sserver.NewKubernetesSyncServer(conf.Spec.AgentUpgrades.Kubernetes, lg)
 	if err != nil {
-		lg.With(
-			zap.Error(err),
-		).Panic("failed to create kubernetes agent sync server")
+		lg.Error("failed to create kubernetes agent sync server", logger.Err(err))
+		panic(err)
+
 	}
 	updateServer.RegisterUpdateHandler(kubernetesSyncServer.Strategy(), kubernetesSyncServer)
 
@@ -240,9 +235,9 @@ func NewGateway(ctx context.Context, conf *config.GatewayConfig, pl plugins.Load
 	// set up grpc server
 	tlsConfig, pkey, err := grpcTLSConfig(&conf.Spec)
 	if err != nil {
-		lg.With(
-			zap.Error(err),
-		).Panic("failed to load TLS config")
+		lg.Error("failed to load TLS config", logger.Err(err))
+		panic(err)
+
 	}
 
 	rateLimitOpts := []RatelimiterOption{}
@@ -262,7 +257,7 @@ func NewGateway(ctx context.Context, conf *config.GatewayConfig, pl plugins.Load
 
 	// set up stream server
 	listener := health.NewListener()
-	monitor := health.NewMonitor(health.WithLogger(lg.Named("monitor")))
+	monitor := health.NewMonitor(health.WithLogger(lg.WithGroup("monitor")))
 	delegate := NewDelegateServer(storageBackend, lg)
 	// set up agent connection handlers
 	agentHandler := MultiConnectionHandler(listener, delegate)
@@ -314,7 +309,7 @@ func (g *Gateway) ListenAndServe(ctx context.Context) error {
 			if errors.Is(err, context.Canceled) {
 				lg.Info("http server stopped")
 			} else {
-				lg.With(zap.Error(err)).Warn("http server exited with error")
+				lg.Warn("http server exited with error", logger.Err(err))
 			}
 		}
 		return err
@@ -327,7 +322,7 @@ func (g *Gateway) ListenAndServe(ctx context.Context) error {
 			if errors.Is(err, context.Canceled) {
 				lg.Info("grpc server stopped")
 			} else {
-				lg.With(zap.Error(err)).Warn("grpc server exited with error")
+				lg.Warn("grpc server exited with error", logger.Err(err))
 			}
 		}
 		return err

@@ -2,15 +2,18 @@ package update
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
 
+	"log/slog"
+
 	"github.com/prometheus/client_golang/prometheus"
 	controlv1 "github.com/rancher/opni/pkg/apis/control/v1"
+	"github.com/rancher/opni/pkg/logger"
 	"github.com/rancher/opni/pkg/urn"
 	"github.com/rancher/opni/pkg/util/streams"
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -22,14 +25,14 @@ var _ controlv1.UpdateSyncServer = (*UpdateServer)(nil)
 
 type UpdateServer struct {
 	controlv1.UnsafeUpdateSyncServer
-	logger         *zap.SugaredLogger
+	logger         *slog.Logger
 	updateHandlers map[string]UpdateTypeHandler
 	handlerMu      sync.RWMutex
 }
 
-func NewUpdateServer(lg *zap.SugaredLogger) *UpdateServer {
+func NewUpdateServer(lg *slog.Logger) *UpdateServer {
 	return &UpdateServer{
-		logger:         lg.Named("update-server"),
+		logger:         lg.WithGroup("update-server"),
 		updateHandlers: make(map[string]UpdateTypeHandler),
 	}
 }
@@ -37,7 +40,7 @@ func NewUpdateServer(lg *zap.SugaredLogger) *UpdateServer {
 func (s *UpdateServer) RegisterUpdateHandler(strategy string, handler UpdateTypeHandler) {
 	s.handlerMu.Lock()
 	defer s.handlerMu.Unlock()
-	s.logger.Infof("registering update handler for strategy %q", strategy)
+	s.logger.Info(fmt.Sprintf("registering update handler for strategy %q", strategy))
 	s.updateHandlers[strategy] = handler
 }
 
@@ -49,18 +52,15 @@ func (s *UpdateServer) SyncManifest(ctx context.Context, manifest *controlv1.Upd
 	lg := s.logger
 	strategy, err := getStrategy(manifest.GetItems())
 	if err != nil {
-		lg.With(
-			zap.Error(err),
-		).Warn("could not sync agent manifest")
+		lg.Warn("could not sync agent manifest", logger.Err(err))
+
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	agentPeer, ok := peer.FromContext(ctx)
 	if ok {
 		lg = lg.With("agent", agentPeer.Addr.String())
 	}
-	lg.With(
-		"strategy", strategy,
-	).Info("syncing agent manifest")
+	lg.Info("syncing agent manifest", "strategy", strategy)
 
 	s.handlerMu.RLock()
 	handler, ok := s.updateHandlers[strategy]
@@ -71,15 +71,12 @@ func (s *UpdateServer) SyncManifest(ctx context.Context, manifest *controlv1.Upd
 
 	patchList, err := handler.CalculateUpdate(ctx, manifest)
 	if err != nil {
-		lg.With(
-			zap.Error(err),
-		).Error("error calculating updates")
+		lg.Error("error calculating updates", logger.Err(err))
+
 		return nil, err
 	}
 
-	lg.With(
-		"summary", patchList.Summary(),
-	).Info("sending sync results")
+	lg.Info("sending sync results", "summary", patchList.Summary())
 
 	return &controlv1.SyncResults{
 		RequiredPatches: patchList,

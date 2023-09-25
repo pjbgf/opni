@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 
+	"log/slog"
+
 	healthpkg "github.com/rancher/opni/pkg/health"
 	"github.com/rancher/opni/pkg/logger"
 	"github.com/rancher/opni/pkg/plugins/apis/apiextensions/stream"
@@ -12,13 +14,12 @@ import (
 	"github.com/rancher/opni/pkg/util/future"
 	"github.com/rancher/opni/plugins/topology/apis/node"
 	"github.com/rancher/opni/plugins/topology/pkg/topology/agent/drivers"
-	"go.uber.org/zap"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type Plugin struct {
 	ctx    context.Context
-	logger *zap.SugaredLogger
+	logger *slog.Logger
 
 	node             *TopologyNode
 	topologyStreamer *TopologyStreamer
@@ -29,7 +30,7 @@ type Plugin struct {
 }
 
 func NewPlugin(ctx context.Context) *Plugin {
-	lg := logger.NewPluginLogger().Named("topology")
+	lg := logger.NewPluginLogger().WithGroup("topology")
 	ct := healthpkg.NewDefaultConditionTracker(lg)
 	p := &Plugin{
 		ctx:              ctx,
@@ -39,17 +40,15 @@ func NewPlugin(ctx context.Context) *Plugin {
 		k8sClient:        future.New[client.Client](),
 	}
 
-	if d, err := drivers.NewExternalTopologyOperatorDriver(lg.Named("external-topology-operator")); err != nil {
+	if d, err := drivers.NewExternalTopologyOperatorDriver(lg.WithGroup("external-topology-operator")); err != nil {
 		// doens't exist
-		lg.With(
-			"driver", d.Name(),
-			zap.Error(err),
-		).Info("node driver is unavailable")
+		lg.Info("node driver is unavailable", "driver", d.Name(),
+			logger.Err(err))
+
 		drivers.LogNodeDriverFailure(d.Name(), err)
 	} else {
-		lg.With(
-			"driver", d.Name(),
-		).Info("node driver is available")
+		lg.Info("node driver is available", "driver", d.Name())
+
 		drivers.RegisterNodeDriver(d)
 		p.node.AddConfigListener(drivers.NewListenerFunc(ctx, d.ConfigureNode))
 	}

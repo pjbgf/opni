@@ -42,9 +42,8 @@ func NewEtcdLockManager(ctx context.Context, conf *v1beta1.EtcdStorageSpec, opts
 	if err != nil {
 		return nil, fmt.Errorf("failed to create etcd client: %w", err)
 	}
-	lg.With(
-		"endpoints", clientConfig.Endpoints,
-	).Info("connecting to etcd")
+	lg.Info("connecting to etcd", "endpoints", clientConfig.Endpoints)
+
 	return &EtcdLockManager{
 		options: options,
 		lg:      lg,

@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	"log/slog"
+
 	controlv1 "github.com/rancher/opni/pkg/apis/control/v1"
 	"github.com/rancher/opni/pkg/clients"
+	"github.com/rancher/opni/pkg/logger"
 	"github.com/rancher/opni/pkg/util"
-	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -16,7 +18,7 @@ type SyncConfig struct {
 	Client      controlv1.UpdateSyncClient
 	StatsClient clients.ConnStatsQuerier
 	Syncer      SyncHandler
-	Logger      *zap.SugaredLogger
+	Logger      *slog.Logger
 }
 
 func (conf SyncConfig) DoSync(ctx context.Context) error {
@@ -31,11 +33,9 @@ func (conf SyncConfig) DoSync(ctx context.Context) error {
 	}
 
 	lg := conf.Logger.With(
-		zap.String("type", string(updateType)),
+		"type", string(updateType),
 	)
-	lg.With(
-		"entries", len(initialManifest.GetItems()),
-	).Debug("sending manifest sync request")
+	lg.Debug("sending manifest sync request", "entries", len(initialManifest.GetItems()))
 
 	ticker := time.NewTicker(5 * time.Second)
 	syncDone := make(chan struct{})
@@ -56,7 +56,7 @@ func (conf SyncConfig) DoSync(ctx context.Context) error {
 			printStats = func(msg string) {
 				stats, err := conf.StatsClient.QueryConnStats()
 				if err != nil {
-					lg.With(zap.Error(err)).Warn("failed to query connection stats")
+					lg.Warn("failed to query connection stats", logger.Err(err))
 					return
 				}
 				rate, err := util.Humanize(stats.DeliveryRate())
@@ -70,7 +70,7 @@ func (conf SyncConfig) DoSync(ctx context.Context) error {
 				secs := elapsedTime / time.Second
 				elapsedTime -= secs * time.Second
 				millis := elapsedTime / time.Millisecond
-				lg.Debugf("%s%sB | %sB/s | %02d:%02d.%03d", msg, recvdStr, rate, mins, secs, millis)
+				lg.Debug(fmt.Sprintf("%s%sB | %sB/s | %02d:%02d.%03d", msg, recvdStr, rate, mins, secs, millis))
 			}
 		}
 		for {
@@ -97,9 +97,8 @@ func (conf SyncConfig) DoSync(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to handle agent sync results: %w", err)
 	}
-	lg.With(
-		"entries", len(initialManifest.GetItems()),
-	).Info("manifest sync complete")
+	lg.Info("manifest sync complete", "entries", len(initialManifest.GetItems()))
+
 	return nil
 }
 
