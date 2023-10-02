@@ -53,18 +53,6 @@ func (ls *LogServer) RemoveClient(name string) {
 	delete(ls.clients, name)
 }
 
-// todo point protoHandler to write to LogServer, which will write to all clients
-// who are following logs
-func (ls *LogServer) Write(p []byte) (int, error) {
-	len := len(p)
-	ls.clientsMu.Lock()
-	defer ls.clientsMu.Unlock()
-	// for i, c := range w.clients {
-	// }
-
-	return len, nil
-}
-
 func (ls *LogServer) GetLogs(ctx context.Context, req *controlv1.LogStreamRequest) (*controlv1.StructuredLogRecords, error) {
 	since := req.Since.AsTime()
 	until := req.Until.AsTime()
