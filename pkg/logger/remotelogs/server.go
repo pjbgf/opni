@@ -1,4 +1,4 @@
-package logger
+package remotelogs
 
 import (
 	"context"
@@ -8,6 +8,8 @@ import (
 	"sync"
 
 	controlv1 "github.com/rancher/opni/pkg/apis/control/v1"
+	"github.com/rancher/opni/pkg/auth/cluster"
+	"github.com/rancher/opni/pkg/logger"
 	"github.com/spf13/afero"
 	"google.golang.org/protobuf/proto"
 )
@@ -37,7 +39,7 @@ func NewLogServer(opts ...LogServerOption) *LogServer {
 
 	return &LogServer{
 		clients: make(map[string]controlv1.LogClient),
-		logger:  New().WithGroup("agent-log-server"),
+		logger:  logger.New().WithGroup("agent-log-server"),
 	}
 }
 
@@ -59,7 +61,7 @@ func (ls *LogServer) GetLogs(ctx context.Context, req *controlv1.LogStreamReques
 	minLevel := req.Filters.Level
 	nameFilters := req.Filters.NamePattern
 
-	f, err := OpenLogFile()
+	f, err := logger.OpenLogFile(cluster.StreamAuthorizedID(ctx))
 	if err != nil {
 		ls.logger.Error("failed to open log file")
 		return nil, err
@@ -79,7 +81,7 @@ func (ls *LogServer) GetLogs(ctx context.Context, req *controlv1.LogStreamReques
 			return nil, err
 		}
 
-		if minLevel != nil && ParseLevel(msg.Level) < slog.Level(*minLevel) {
+		if minLevel != nil && logger.ParseLevel(msg.Level) < slog.Level(*minLevel) {
 			continue
 		}
 

@@ -40,8 +40,7 @@ var (
 var logSampler = &sampler{}
 
 func init() {
-	//logFs = afero.NewMemMapFs() //fixme err unmarshal: string field contains invalid UTF-8
-	logFs = afero.NewOsFs()
+	logFs = afero.NewMemMapFs()
 }
 
 func AsciiLogo() string {
@@ -49,14 +48,14 @@ func AsciiLogo() string {
 }
 
 type LoggerOptions struct {
-	Level         slog.Level
-	AddSource     bool
-	ReplaceAttr   func(groups []string, a slog.Attr) slog.Attr
-	Writer        io.Writer
-	ColorEnabled  bool
-	TimeFormat    string
-	Sampling      *slogsampling.ThresholdSamplingOption
-	LogFileWriter bool
+	Level        slog.Level
+	AddSource    bool
+	ReplaceAttr  func(groups []string, a slog.Attr) slog.Attr
+	Writer       io.Writer
+	ColorEnabled bool
+	TimeFormat   string
+	Sampling     *slogsampling.ThresholdSamplingOption
+	RemoteSource string
 }
 
 func ParseLevel(lvl string) slog.Level {
@@ -92,9 +91,9 @@ func WithWriter(w io.Writer) LoggerOption {
 	}
 }
 
-func WithLogFileWriter() LoggerOption {
+func WithRemoteSource(clusterID string) LoggerOption {
 	return func(o *LoggerOptions) {
-		o.LogFileWriter = true
+		o.RemoteSource = clusterID
 	}
 }
 
@@ -170,8 +169,9 @@ func New(opts ...LoggerOption) *slog.Logger {
 	}
 
 	// write logs to a file
-	if options.LogFileWriter {
-		f, err := logFs.OpenFile(logFileName, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	if options.RemoteSource != "" {
+		filename := logFileName + options.RemoteSource
+		f, err := logFs.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 		if err != nil {
 			panic(err)
 		}
@@ -228,4 +228,8 @@ func (s *sampler) onDroppedHook(_ context.Context, r slog.Record) {
 	key := r.Message
 	count, _ := s.dropped.LoadOrStore(key, 0)
 	s.dropped.Store(key, count+1)
+}
+
+func OpenLogFile(cluster string) (afero.File, error) {
+	return logFs.OpenFile(logFileName+cluster, os.O_RDONLY|os.O_CREATE, 0666)
 }
