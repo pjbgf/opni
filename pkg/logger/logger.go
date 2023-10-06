@@ -177,7 +177,7 @@ func New(opts ...LoggerOption) *slog.Logger {
 		}
 		// FIXME where to close this file?
 
-		logFileHandler := NewProtoHandler(f, ConfigureProtoOptions(options))
+		logFileHandler := newProtoHandler(f, ConfigureProtoOptions(options))
 
 		// distribute logs to handlers in parallel
 		return slog.New(slogmulti.Fanout(handler, logFileHandler))
