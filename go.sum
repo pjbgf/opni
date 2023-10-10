@@ -1654,6 +1654,8 @@ github.com/kralicky/ragu v1.0.11-0.20230627162951-2dd00e0cbbf3 h1:UB8Fk6c8Ait8DL
 github.com/kralicky/ragu v1.0.11-0.20230627162951-2dd00e0cbbf3/go.mod h1:njQGnwU5IHm4Qx6/oOY0ll7Z6WA0apfP0ClpVA0M27Q=
 github.com/kralicky/totem v1.2.1 h1:ayd+IHbmmWhgFXJfzTHg0mJ2mr/IYHCh/nDqYyd6yCk=
 github.com/kralicky/totem v1.2.1/go.mod h1:DFlQM6o5n1AWrU/+wd3hjLKoKZ+a0TPRUQxnCQvGKyY=
+github.com/kralicky/totem v1.2.2-0.20231009021447-a9174f61f909 h1:5DlbFsLWxwyxYbBKOfYW5YBLopYnH/BvmYErCr6q4PU=
+github.com/kralicky/totem v1.2.2-0.20231009021447-a9174f61f909/go.mod h1:DFlQM6o5n1AWrU/+wd3hjLKoKZ+a0TPRUQxnCQvGKyY=
 github.com/kralicky/yaml/v3 v3.0.0-20220520012407-b0e7050bd81d h1:kLfaaFdmCHKZCvL4DzQ7T9YsAVSBqZez34zaegldkls=
 github.com/kralicky/yaml/v3 v3.0.0-20220520012407-b0e7050bd81d/go.mod h1:z4cKsjE0B5RlhFSbWcZNh70UEjtwrj8fpG1QXyU2KuI=
 github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0SNc=

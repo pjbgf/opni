@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"regexp"
 	"sync"
+	"time"
 
 	controlv1 "github.com/rancher/opni/pkg/apis/control/v1"
 	"github.com/rancher/opni/pkg/auth/cluster"
@@ -53,6 +54,57 @@ func (ls *LogServer) RemoveClient(name string) {
 	ls.clientsMu.Lock()
 	defer ls.clientsMu.Unlock()
 	delete(ls.clients, name)
+}
+
+func (ls *LogServer) StreamLogs(req *controlv1.LogStreamRequest, server controlv1.Log_StreamLogsServer) error {
+	since := req.Since.AsTime()
+	until := req.Until.AsTime()
+	minLevel := req.Filters.Level
+	nameFilters := req.Filters.NamePattern
+	follow := req.Follow
+
+	f, err := logger.OpenLogFile(cluster.StreamAuthorizedID(server.Context()))
+	if err != nil {
+		ls.logger.Error("failed to open log file", logger.Err(err))
+		return err
+	}
+	defer f.Close()
+
+	for {
+		msg, err := ls.getLogMessage(req, f)
+		done := err != nil && err == io.EOF
+		keepFollowing := done && follow
+		if keepFollowing {
+			time.Sleep(time.Second)
+			continue
+		} else if done {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		if minLevel != nil && logger.ParseLevel(msg.Level) < slog.Level(*minLevel) {
+			continue
+		}
+
+		time := msg.Time.AsTime()
+		if time.Before(since) {
+			continue
+		}
+		if !follow && time.After(until) {
+			continue
+		}
+
+		if nameFilters != nil && !matchesNameFilter(nameFilters, msg.Name) {
+			continue
+		}
+
+		err = server.Send(msg)
+		if err != nil {
+			return err
+		}
+	}
 }
 
 func (ls *LogServer) GetLogs(ctx context.Context, req *controlv1.LogStreamRequest) (*controlv1.StructuredLogRecords, error) {
