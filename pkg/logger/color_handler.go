@@ -39,7 +39,7 @@ type colorHandler struct {
 	addSource    bool
 	replaceAttr  func([]string, slog.Attr) slog.Attr
 	colorEnabled bool
-	disableTime  bool
+	timeFormat   string
 	attrsPrefix  string   // attrs started from With
 	groups       []string // all groups started from WithGroup
 	groupPrefix  string   // groups started from Group
@@ -53,8 +53,11 @@ func newColorHandler(w io.Writer, opts *LoggerOptions) slog.Handler {
 			Level:        DefaultLogLevel,
 			AddSource:    false,
 			ColorEnabled: false,
-			DisableTime:  DefaultDisableTime,
 		}
+	}
+
+	if opts.TimeFormat == "" {
+		opts.TimeFormat = DefaultTimeFormat
 	}
 
 	return &colorHandler{
@@ -62,7 +65,7 @@ func newColorHandler(w io.Writer, opts *LoggerOptions) slog.Handler {
 		addSource:    opts.AddSource,
 		replaceAttr:  opts.ReplaceAttr,
 		colorEnabled: opts.ColorEnabled,
-		disableTime:  opts.DisableTime,
+		timeFormat:   opts.TimeFormat,
 		w:            w,
 	}
 }
@@ -77,7 +80,6 @@ func (h *colorHandler) clone() *colorHandler {
 		addSource:    h.addSource,
 		replaceAttr:  h.replaceAttr,
 		colorEnabled: h.colorEnabled,
-		disableTime:  h.disableTime,
 		attrsPrefix:  h.attrsPrefix,
 		groups:       h.groups,
 		groupPrefix:  h.groupPrefix,
@@ -120,9 +122,7 @@ func (h *colorHandler) Handle(_ context.Context, r slog.Record) error {
 
 	rep := h.replaceAttr
 
-	if !h.disableTime {
-		h.appendTime(buf, r.Time)
-	}
+	h.appendTime(buf, r.Time)
 
 	if rep == nil {
 		h.appendLevel(buf, r.Level)
@@ -168,7 +168,7 @@ func (h *colorHandler) Handle(_ context.Context, r slog.Record) error {
 func (h *colorHandler) appendTime(buf *buffer, t time.Time) {
 	buf.WriteStringIf(h.colorEnabled, ansiFaintStyle)
 	if h.replaceAttr == nil {
-		*buf = t.AppendFormat(*buf, TimeFormat)
+		*buf = t.AppendFormat(*buf, h.timeFormat)
 		buf.WriteByte(' ')
 	} else if a := h.replaceAttr(nil /* groups */, slog.Time(slog.TimeKey, t)); a.Key != "" {
 		h.appendValue(buf, a.Value, false)
@@ -322,7 +322,7 @@ func (h *colorHandler) appendValue(buf *buffer, v slog.Value, shouldQuote bool) 
 	case slog.KindDuration:
 		h.appendString(buf, v.Duration().String(), shouldQuote)
 	case slog.KindTime:
-		*buf = v.Time().AppendFormat(*buf, TimeFormat)
+		*buf = v.Time().AppendFormat(*buf, h.timeFormat)
 	case slog.KindAny:
 		switch cv := v.Any().(type) {
 		case slog.Level:

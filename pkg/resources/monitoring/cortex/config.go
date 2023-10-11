@@ -102,18 +102,18 @@ func (r *Reconciler) config() ([]resources.Resource, string, error) {
 		return nil, "", err
 	}
 	if err := conf.Validate(log.NewNopLogger()); err != nil {
-		r.logger.Warn("Cortex config failed validation (ignoring)", logger.Err(err))
+		r.lg.Warn("Cortex config failed validation (ignoring)", logger.Err(err))
 
 	}
 	confBytes, err := configutil.MarshalCortexConfig(conf)
 	if err != nil {
-		r.logger.Error("Failed to marshal cortex config (cannot continue)", logger.Err(err))
+		r.lg.Error("Failed to marshal cortex config (cannot continue)", logger.Err(err))
 
 		return nil, "", err
 	}
 	rtConfBytes, err := configutil.MarshalRuntimeConfig(rtConf)
 	if err != nil {
-		r.logger.Error("Failed to marshal cortex runtime config (cannot continue)", logger.Err(err))
+		r.lg.Error("Failed to marshal cortex runtime config (cannot continue)", logger.Err(err))
 
 		return nil, "", err
 	}

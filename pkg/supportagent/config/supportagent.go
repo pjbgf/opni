@@ -3,8 +3,11 @@ package config
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+
+	"log/slog"
 
 	keystore "github.com/99designs/keyring"
 	controlv1 "github.com/rancher/opni/pkg/apis/control/v1"
@@ -14,8 +17,8 @@ import (
 	"github.com/rancher/opni/pkg/ident"
 	"github.com/rancher/opni/pkg/ident/identserver"
 	"github.com/rancher/opni/pkg/keyring"
+	"github.com/rancher/opni/pkg/logger"
 	"github.com/rancher/opni/pkg/machinery"
-	"go.uber.org/zap"
 	"sigs.k8s.io/yaml"
 )
 
@@ -28,23 +31,25 @@ const (
 	defaultFile = "keyring"
 )
 
-func MustLoadConfig(configFile string, lg *zap.SugaredLogger) *v1beta1.SupportAgentConfig {
+func MustLoadConfig(configFile string, lg *slog.Logger) *v1beta1.SupportAgentConfig {
 	if configFile == "" {
 		// find config file
 		path, err := config.FindSupportConfig()
 		switch {
 		case err == nil:
-			lg.With(
-				"path", path,
-			).Info("using config file")
+			lg.Info(
+
+				"using config file", "path", path)
+
 			configFile = path
 		case errors.Is(err, config.ErrConfigNotFound):
 			wd, _ := os.Getwd()
-			lg.Fatalf(`could not find a config file in ["%s", "$home/.opni], and --config was not given`, wd)
+			lg.Error(fmt.Sprintf(`could not find a config file in ["%s", "$home/.opni], and --config was not given`, wd))
+			os.Exit(1)
 		default:
-			lg.With(
-				zap.Error(err),
-			).Fatal("an error occurred while searching for a config file")
+			lg.Error("an error occurred while searching for a config file", logger.Err(err))
+			os.Exit(1)
+
 		}
 	}
 
@@ -52,14 +57,15 @@ func MustLoadConfig(configFile string, lg *zap.SugaredLogger) *v1beta1.SupportAg
 	if configFile != "" {
 		objects, err := config.LoadObjectsFromFile(configFile)
 		if err != nil {
-			lg.With(
-				zap.Error(err),
-			).Fatal("failed to load config")
+			lg.Error("failed to load config", logger.Err(err))
+			os.Exit(1)
+
 		}
 		if ok := objects.Visit(func(config *v1beta1.SupportAgentConfig) {
 			agentConfig = config
 		}); !ok {
-			lg.Fatal("no support agent config found in config file")
+			lg.Error("no support agent config found in config file")
+			os.Exit(1)
 		}
 	} else {
 		agentConfig.TypeMeta = v1beta1.SupportAgentConfigTypeMeta
