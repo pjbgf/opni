@@ -1,0 +1,27 @@
+syntax="proto3";
+option go_package = "github.com/rancher/opni/pkg/apis/alerting/v2";
+
+import "github.com/rancher/opni/internal/alertmanager/receiver.proto";
+import "github.com/rancher/opni/pkg/apis/core/v1/core.proto";
+
+
+package alerting;
+
+service RoutingService {
+    // returns the ids
+    rpc Matches(AlertPayload) returns (RouteResponse) {}
+}
+
+message AlertPayload {
+    repeated core.Reference clusters = 1;
+    map<string,string> labels = 2;
+}
+
+// TODO : this is not the final spec, just for POC
+message RouteResponse {
+    map<string, Matched> receivers = 1;
+}
+
+message Matched {
+    repeated string names = 1;
+}

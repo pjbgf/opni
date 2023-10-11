@@ -1,0 +1,64 @@
+syntax="proto3";
+option go_package = "github.com/rancher/opni/pkg/apis/alerting/v2";
+
+import "github.com/rancher/opni/internal/alertmanager/receiver.proto";
+import "github.com/rancher/opni/pkg/apis/core/v1/core.proto";
+
+import "google/api/http.proto";
+import "google/protobuf/empty.proto";
+import "google/api/annotations.proto";
+
+package alerting;
+
+
+message OpniReceiver {
+  core.Reference reference = 1;
+  alertmanager.Receiver receiver = 2;
+  repeated string clusters = 3;
+  // TODO : this should be a label matcher proto
+  map<string, string> matchers = 4;
+  map<string, string> metadata = 5;
+  int64 revision = 6;
+}
+
+message DeleteReceiverRequest {
+    core.Reference reference = 1;
+    int64 revision = 2;
+}
+
+message OpniReceiverList {
+    repeated OpniReceiver items = 1;
+}
+
+service ReceiverServer {
+    rpc GetReceiver(core.Reference) returns (OpniReceiver) {
+        option(google.api.http) = {
+            get : "/receiver",
+        };
+    }
+    rpc ListReceivers(google.protobuf.Empty) returns (OpniReceiverList) {
+        option(google.api.http) = {
+            get : "/receivers",
+        };
+    }
+
+    rpc PutReceiver(OpniReceiver) returns (core.Reference) {
+        option(google.api.http) = {
+            put : "/receiver",
+            body : "*",
+        };
+    }
+
+    rpc DeleteReceiver(DeleteReceiverRequest) returns (google.protobuf.Empty) {
+        option(google.api.http) = {
+            delete : "/receiver",
+        };
+    }
+
+    rpc TestReceiver(OpniReceiver) returns (google.protobuf.Empty) {
+        option(google.api.http) = {
+            post : "/receiver/test",
+            body : "*",
+        };
+    }
+}
